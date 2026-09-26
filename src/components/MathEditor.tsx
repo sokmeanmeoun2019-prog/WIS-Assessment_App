@@ -214,14 +214,16 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     
     let range: Range;
     
-    // 100% FOOLPROOF FIX: We completely ignore the browser's global selection,
-    // which gets extremely confused by React re-renders and toolbars.
-    // Instead, we use the specific cursor position we meticulously saved
-    // the last time the user clicked inside THIS specific text box.
-    if (savedRangeRef.current) {
+    // Check if the saved range is still physically in the document.
+    // If the user deleted the text, the saved range's node might have been removed,
+    // which causes a "NotFoundError" if we try to insert into it.
+    const isRangeValid = savedRangeRef.current && 
+                         editorRef.current.contains(savedRangeRef.current.commonAncestorContainer);
+    
+    if (isRangeValid && savedRangeRef.current) {
       range = savedRangeRef.current.cloneRange();
     } else {
-      // If they never clicked inside this box yet, force it to the end of this box.
+      // If they never clicked inside this box yet, or the node was deleted, force it to the end.
       editorRef.current.focus();
       range = document.createRange();
       range.selectNodeContents(editorRef.current);
@@ -260,7 +262,6 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     wrapper.addEventListener('mousedown', (e) => {
       e.stopPropagation();
       mf.focus();
-      if (mf.executeCommand) mf.executeCommand('focus');
     });
     
     range.deleteContents();
@@ -271,15 +272,27 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     
     range.setStartAfter(space);
     range.setEndAfter(space);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    
+    // Save the new position outside the math box just in case they click away
+    savedRangeRef.current = range.cloneRange();
     
     handleInput();
     
+    // Force the cursor inside the math box so they can type immediately
     setTimeout(() => {
-      mf.focus();
-      if (mf.executeCommand) mf.executeCommand('focus');
+      try { mf.focus(); } catch (e) {}
     }, 50);
+    
+    // Backup focus call for slower Web Component initialization
+    setTimeout(() => {
+      try { mf.focus(); } catch (e) {}
+    }, 150);
   }
 
   const insertMathSymbol = (latex: string) => {
