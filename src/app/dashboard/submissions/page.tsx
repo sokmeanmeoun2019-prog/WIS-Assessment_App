@@ -1,7 +1,7 @@
+"use client"
 import React, { useState, useEffect, useRef } from 'react'
-import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, Trash2, X, Save } from 'lucide-react'
+import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save } from 'lucide-react'
 import 'katex/dist/katex.min.css'
-import { BlockMath, InlineMath } from 'react-katex'
 import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore'
 
@@ -25,7 +25,7 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [color, setColor] = useState('#ef4444') // Red
-  const [brushSize, setBrushSize] = useState(3)
+  const brushSize = 3
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
   
   useEffect(() => {
@@ -302,7 +302,9 @@ export default function SubmissionsPage() {
       if (targetSub) {
         try {
           setDoc(doc(db, "submissions", subId), targetSub);
-        } catch (e) {}
+        } catch (err) {
+          console.error("Firebase update error", err);
+        }
       }
     }
     setAnnotatingImage(null);
