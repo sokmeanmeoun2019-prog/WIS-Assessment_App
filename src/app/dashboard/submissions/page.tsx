@@ -34,8 +34,21 @@ export default function SubmissionsPage() {
         let storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         let storedSubmissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
 
+        // Sort local submissions
+        storedSubmissions.sort((a: any, b: any) => {
+          const classA = (a.className || a.studentId || '').toUpperCase();
+          const classB = (b.className || b.studentId || '').toUpperCase();
+          if (classA < classB) return -1;
+          if (classA > classB) return 1;
+          return 0;
+        });
+
+        // Optimistic UI: Immediately show what we have in local storage!
+        if (storedAssessments.length > 0) setAssessments(storedAssessments);
+        if (storedSubmissions.length > 0) setSubmissions(storedSubmissions);
+
         try {
-          // Fetch from Firebase
+          // Fetch from Firebase (Background)
           const assessmentsSnap = await getDocs(collection(db, "assessments"));
           const cloudAssessments = assessmentsSnap.docs.map(doc => doc.data());
           if (cloudAssessments.length > 0) {
@@ -47,6 +60,7 @@ export default function SubmissionsPage() {
             });
             storedAssessments = merged;
             localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments));
+            setAssessments(storedAssessments);
           }
 
           const subsSnap = await getDocs(collection(db, "submissions"));
@@ -58,21 +72,21 @@ export default function SubmissionsPage() {
               if (idx >= 0) mergedSub[idx] = cs; else mergedSub.push(cs);
             });
             storedSubmissions = mergedSub;
+            
+            storedSubmissions.sort((a: any, b: any) => {
+              const classA = (a.className || a.studentId || '').toUpperCase();
+              const classB = (b.className || b.studentId || '').toUpperCase();
+              if (classA < classB) return -1;
+              if (classA > classB) return 1;
+              return 0;
+            });
+            
             localStorage.setItem('demo_submissions', JSON.stringify(storedSubmissions));
+            setSubmissions(storedSubmissions);
           }
         } catch (fbError) {
-          console.error("Firebase fetch error", fbError);
+          console.warn("Firebase fetch error", fbError);
         }
-
-        setAssessments(storedAssessments)
-        
-        storedSubmissions.sort((a: any, b: any) => {
-          const classA = (a.className || a.studentId || '').toUpperCase();
-          const classB = (b.className || b.studentId || '').toUpperCase();
-          if (classA < classB) return -1;
-          if (classA > classB) return 1;
-          return 0;
-        });
 
         // Add a dummy submission just so the screen isn't empty if they haven't taken a test yet
         if (storedSubmissions.length === 0) {
@@ -220,9 +234,14 @@ export default function SubmissionsPage() {
                         <Clock className="w-3 h-3 mr-1" /> Needs Grading
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                        <CheckCircle className="w-3 h-3 mr-1" /> Graded
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 w-fit">
+                          <CheckCircle className="w-3 h-3 mr-1" /> Graded
+                        </span>
+                        {sub.score !== undefined && (
+                          <span className="mt-1 text-sm font-black text-indigo-700">Score: {sub.score}%</span>
+                        )}
+                      </div>
                     )}
                   </div>
 
