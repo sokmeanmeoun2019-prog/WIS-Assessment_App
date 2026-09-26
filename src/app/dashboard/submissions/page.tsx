@@ -1,5 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save, Undo, Trash2 } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import { db, auth } from '@/lib/firebase'
@@ -35,6 +36,11 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
   const [currentPath, setCurrentPath] = useState<Path | null>(null)
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
   const [canvasDim, setCanvasDim] = useState({ w: 800, h: 600 })
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     const img = new window.Image()
@@ -158,8 +164,10 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+  if (!mounted) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] max-w-5xl w-full">
         <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <h2 className="font-bold text-slate-800 flex items-center">
@@ -235,7 +243,8 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
