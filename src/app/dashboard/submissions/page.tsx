@@ -54,7 +54,7 @@ export default function SubmissionsPage() {
           
           // Multi-tenancy filter
           if (auth.currentUser?.uid) {
-            cloudAssessments = cloudAssessments.filter(a => !a.teacherId || a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy');
+            cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid);
           }
 
           if (cloudAssessments.length > 0) {
