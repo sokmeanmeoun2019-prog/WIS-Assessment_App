@@ -303,7 +303,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   }
 
   return (
-    <div className="group border border-slate-300 rounded-lg overflow-hidden bg-white flex flex-col focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 shadow-sm transition-all duration-200">
+    <div className="group/math border border-slate-300 rounded-lg overflow-hidden bg-white flex flex-col focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 shadow-sm transition-all duration-200">
       <style dangerouslySetInnerHTML={{__html: `
         math-field::part(virtual-keyboard-toggle) {
           display: none !important;
@@ -314,7 +314,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
       `}} />
       
       {/* Toolbar */}
-      <div className={`${compact ? 'hidden group-focus-within:flex' : 'flex'} bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center`}>
+      <div className={`${compact ? 'hidden group-focus-within/math:flex' : 'flex'} bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center`}>
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); exec('bold'); }}
