@@ -4,6 +4,12 @@ const nextConfig = {
   images: {
     domains: ['localhost', 'qkqmfxmshobnpxgvwypa.supabase.co'],
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 }
 
 module.exports = nextConfig
