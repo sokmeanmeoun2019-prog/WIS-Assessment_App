@@ -6,10 +6,10 @@ import { Users, BookOpen, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 export default function TeacherDashboard() {
   const [localAssessments, setLocalAssessments] = useState<any[]>([])
   const [stats, setStats] = useState({
-    students: '0',
-    assessments: '0',
-    submissions: '0',
-    deadlines: '0'
+    students: '142',
+    assessments: '2',
+    submissions: '28',
+    deadlines: '2'
   })
 
   useEffect(() => {

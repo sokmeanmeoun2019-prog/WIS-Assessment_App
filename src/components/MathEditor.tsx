@@ -316,7 +316,15 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   }
 
   return (
-    <div className="group/math border border-slate-300 rounded-lg overflow-hidden bg-white flex flex-col focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 shadow-sm transition-all duration-200">
+    <div 
+      className={`border border-slate-300 rounded-lg overflow-hidden bg-white flex flex-col shadow-sm transition-all duration-200 ${isFocused ? 'ring-2 ring-indigo-500 border-indigo-500' : ''}`}
+      onFocus={() => setIsFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsFocused(false);
+        }
+      }}
+    >
       <style dangerouslySetInnerHTML={{__html: `
         math-field::part(virtual-keyboard-toggle) {
           display: none !important;
@@ -326,8 +334,8 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
         }
       `}} />
       
-      {/* Toolbar - Now always visible to prevent UI confusion! */}
-      <div className="flex bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center">
+      {/* Toolbar - strictly hidden unless this specific editor is focused to prevent misclicks */}
+      <div className={`${(!compact || isFocused) ? 'flex' : 'hidden'} bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center`}>
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); exec('bold'); }}
@@ -417,7 +425,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
 
       {/* Editor Area */}
       <div 
-        className={`${compact ? 'p-2' : 'p-4'} bg-white prose max-w-none focus:outline-none overflow-y-auto`} 
+        className={`${compact ? 'p-2' : 'p-4'} bg-white prose max-w-none focus:outline-none overflow-y-auto ${compact && !isFocused && !value ? 'cursor-pointer hover:bg-slate-50' : ''}`} 
         style={{ minHeight }}
         onClick={(e) => {
           const target = e.target as HTMLElement;
@@ -435,7 +443,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
           contentEditable
           onInput={handleInput}
           className="outline-none min-h-full"
-          data-placeholder={placeholder || "Type your explanation here. Click 'Insert Math Box' to add an equation."}
+          data-placeholder={placeholder || (compact ? "Click here to type..." : "Type your explanation here. Click 'Insert Math Box' to add an equation.")}
           style={{ minHeight: '100%', wordBreak: 'break-word' }}
         />
       </div>
