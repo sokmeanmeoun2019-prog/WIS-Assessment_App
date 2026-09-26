@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { BookOpen, Plus, Clock, Pencil, Trash2, Key, X, Copy, Check, Share2 } from 'lucide-react'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, deleteDoc, setDoc } from 'firebase/firestore'
 
 export default function AssessmentsPage() {
   const [assessments, setAssessments] = useState<any[]>([])
