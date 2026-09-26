@@ -150,11 +150,17 @@ export default function SubmissionsPage() {
           
           const finalScorePercentage = totalPointsPossible > 0 
             ? Math.round((totalPointsEarned / totalPointsPossible) * 100) 
-            : 100
+            : 0
 
-          return { ...s, status: 'Graded', score: finalScorePercentage }
+          return { 
+            ...s, 
+            status: 'Graded', 
+            score: finalScorePercentage,
+            pointsEarned: totalPointsEarned,
+            pointsPossible: totalPointsPossible 
+          }
         }
-        return { ...s, status: 'Graded', score: 100 }
+        return { ...s, status: 'Graded', score: 0, pointsEarned: 0, pointsPossible: 0 }
       }
       return s
     })
@@ -239,7 +245,11 @@ export default function SubmissionsPage() {
                           <CheckCircle className="w-3 h-3 mr-1" /> Graded
                         </span>
                         {sub.score !== undefined && (
-                          <span className="mt-1 text-sm font-black text-indigo-700">Score: {sub.score}%</span>
+                          <span className="mt-1 text-sm font-black text-indigo-700">
+                            {sub.pointsEarned !== undefined && sub.pointsPossible !== undefined 
+                              ? `Score: ${sub.pointsEarned}/${sub.pointsPossible} (${sub.score}%)`
+                              : `Score: ${sub.score}%`}
+                          </span>
                         )}
                       </div>
                     )}
