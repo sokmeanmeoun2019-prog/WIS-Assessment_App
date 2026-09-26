@@ -285,30 +285,6 @@ export default function AssessmentsPage() {
           >
             Recover Lost Quiz
           </button>
-          
-          <button 
-            onClick={async () => {
-              if (!auth.currentUser?.uid) return;
-              try {
-                const snap = await getDocs(collection(db, "assessments"));
-                let count = 0;
-                snap.forEach((docSnap) => {
-                  const data = docSnap.data();
-                  if (!data.teacherId || data.teacherId === 'legacy') {
-                    setDoc(doc(db, "assessments", data.id), { teacherId: auth.currentUser.uid }, { merge: true });
-                    count++;
-                  }
-                });
-                alert(`Successfully claimed and restored ${count} old quizzes! Please do a Hard Refresh to see them.`);
-              } catch (e) {
-                alert('Error claiming quizzes.');
-              }
-            }}
-            className="flex items-center px-4 py-2.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-bold border border-green-300 shadow-sm transition-colors"
-          >
-            Claim Old Quizzes
-          </button>
-
           <Link 
             href="/dashboard/assessments/create"
             className="flex items-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md shadow-indigo-200 transition-colors"
