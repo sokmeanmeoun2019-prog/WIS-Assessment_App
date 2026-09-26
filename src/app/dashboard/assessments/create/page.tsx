@@ -39,7 +39,7 @@ export default function CreateAssessment() {
   const [grade, setGrade] = useState('')
   const [type, setType] = useState('QUIZ')
   const [timeLimit, setTimeLimit] = useState(30)
-  const [availableClasses, setAvailableClasses] = useState<string[]>(['Grade 9A', 'Grade 9B', 'Grade 12A', 'Grade 12B', 'Grade 12C'])
+
 
   const [headerState, setHeaderState] = useState({
     date: '',
@@ -62,20 +62,7 @@ export default function CreateAssessment() {
     }))
   }, [timeLimit, grade])
 
-  React.useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('demo_classes') || '[]')
-      if (stored && stored.length > 0) {
-        const classNames = stored.map((c: any) => c.name)
-        setAvailableClasses(classNames)
-        if (!classNames.includes(grade)) {
-          setGrade(classNames[0])
-        }
-      }
-    } catch (err) {
-      console.error(err)
-    }
-  }, [grade])
+  
   
   const [questions, setQuestions] = useState<Question[]>([
     { id: 'q1', type: 'MCQ', content: 'What is the unit of Force?', points: 1, options: [{id: 'o1', text: 'Newton'}, {id: 'o2', text: 'Joule'}], correctAnswer: 'o1' }
