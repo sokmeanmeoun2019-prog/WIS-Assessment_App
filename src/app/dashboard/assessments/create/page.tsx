@@ -543,6 +543,28 @@ export default function CreateAssessment() {
                             placeholder={`Option ${oIdx + 1}`}
                           />
                         </div>
+                        {q.options.length > 2 && (
+                          <button 
+                            onClick={() => {
+                              const newOpts = q.options.filter(o => o.id !== opt.id);
+                              let newCorrect = q.correctAnswer;
+                              if (Array.isArray(q.correctAnswer)) {
+                                newCorrect = q.correctAnswer.filter(id => id !== opt.id);
+                                if (newCorrect.length === 1) newCorrect = newCorrect[0];
+                                if (newCorrect.length === 0) newCorrect = '';
+                              } else if (q.correctAnswer === opt.id) {
+                                newCorrect = '';
+                              }
+                              setQuestions(questions.map(quest => 
+                                quest.id === q.id ? { ...quest, options: newOpts, correctAnswer: newCorrect } : quest
+                              ));
+                            }}
+                            className="text-slate-400 hover:text-red-500 p-2 transition-colors flex-shrink-0"
+                            title="Remove Option"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                     {!q.correctAnswer && (
