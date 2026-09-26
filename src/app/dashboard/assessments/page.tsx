@@ -179,6 +179,27 @@ export default function AssessmentsPage() {
     setTimeout(() => setToastMessage(null), 3000)
   }
 
+  const handleDuplicateAssessment = (assessment: any) => {
+    const newId = Date.now().toString();
+    const newAssessment = {
+      ...assessment,
+      id: newId,
+      title: `${assessment.title} (Copy)`,
+      createdAt: new Date().toISOString()
+    };
+    
+    const nextAssessments = [...assessments, newAssessment];
+    setAssessments(nextAssessments);
+    localStorage.setItem('demo_assessments', JSON.stringify(nextAssessments));
+    
+    showToast("Assessment duplicated successfully!");
+    
+    // Push to firebase so it works instantly everywhere
+    try {
+      setDoc(doc(db, "assessments", newId), newAssessment);
+    } catch(e) {}
+  }
+
   const handleQuickShare = (assessmentId: string) => {
     const existingSession = sessions.find(s => s.assessmentId === assessmentId && s.status === 'ACTIVE')
     if (existingSession) {
@@ -328,6 +349,13 @@ export default function AssessmentsPage() {
                     title="Manage Access Codes"
                   >
                     <Key className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => handleDuplicateAssessment(a)}
+                    className="text-slate-400 hover:text-blue-600 p-1 transition-colors" 
+                    title="Duplicate Assessment"
+                  >
+                    <Copy className="w-5 h-5" />
                   </button>
                   <Link 
                     href={`/dashboard/assessments/create?edit=${a.id}`}
