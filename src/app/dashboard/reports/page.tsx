@@ -1,7 +1,8 @@
 "use client"
 import React, { useState, useEffect } from 'react'
-import { BarChart, Download, Filter, TrendingUp, Users, Award, FileSpreadsheet } from 'lucide-react'
-
+import { BarChart, Download, Filter, TrendingUp, Users, Award, FileSpreadsheet, Trash2 } from 'lucide-react'
+import { db } from '@/lib/firebase'
+import { doc, deleteDoc } from 'firebase/firestore'
 // Dummy Data
 const dummyGrades = [
   { id: 1, student: 'John Doe', class: 'Class A', grade: 'Grade 9', assessment: 'Kinematics Quiz', score: 85, date: '2026-09-24' },
@@ -59,6 +60,31 @@ export default function ReportsPage() {
 
   const averageScore = Math.round(filteredGrades.reduce((acc, curr) => acc + curr.score, 0) / (filteredGrades.length || 1))
   const highestScore = Math.max(...filteredGrades.map(g => g.score), 0)
+
+  const handleDelete = async (id: string | number) => {
+    const confirmDelete = window.confirm("Are you sure you want to delete this student's score?");
+    if (!confirmDelete) return;
+
+    if (typeof id === 'string' && id.startsWith('local-')) {
+      const realId = id.replace('local-', '');
+      
+      // Remove from localStorage
+      const stored = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+      const updated = stored.filter((s: any) => s.id !== realId)
+      localStorage.setItem('demo_submissions', JSON.stringify(updated))
+      
+      // Remove from current state
+      setGrades(grades.filter(g => g.id !== id))
+      
+      // Remove from firebase
+      try {
+        await deleteDoc(doc(db, "submissions", realId));
+      } catch(e) {}
+    } else {
+      // It's a dummy grade, just remove from state
+      setGrades(grades.filter(g => g.id !== id))
+    }
+  }
 
   const handleExport = () => {
     // Create CSV content
@@ -166,12 +192,13 @@ export default function ReportsPage() {
                 <th scope="col" className="px-6 py-4 font-bold">Assessment</th>
                 <th scope="col" className="px-6 py-4 font-bold">Date Graded</th>
                 <th scope="col" className="px-6 py-4 font-bold">Score</th>
+                <th scope="col" className="px-6 py-4 font-bold text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredGrades.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                     No results found for the selected filters.
                   </td>
                 </tr>
@@ -202,6 +229,15 @@ export default function ReportsPage() {
                       }`}>
                         {g.score}%
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={() => handleDelete(g.id)}
+                        className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Delete Record"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
