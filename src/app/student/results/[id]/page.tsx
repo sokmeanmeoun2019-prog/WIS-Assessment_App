@@ -18,6 +18,9 @@ const renderReadOnlyMath = (html: string | undefined) => {
   return cleaned
 }
 
+import { db } from '@/lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
+
 export default function StudentReviewPage() {
   const params = useParams()
   const router = useRouter()
@@ -27,16 +30,48 @@ export default function StudentReviewPage() {
   const [assessment, setAssessment] = useState<any>(null)
 
   useEffect(() => {
-    try {
-      const storedSubs = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
-      const sub = storedSubs.find((s: any) => s.id === subId)
-      if (sub) {
-        setSubmission(sub)
+    const loadData = async () => {
+      try {
+        let foundSub = null
+        let foundAss = null
+
+        // 1. Check local storage first
+        const storedSubs = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+        foundSub = storedSubs.find((s: any) => s.id === subId)
+        
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
-        const asm = storedAssessments.find((a: any) => a.id === sub.assessmentId)
-        if (asm) setAssessment(asm)
-      }
-    } catch (e) {}
+        
+        // 2. Fallback to Firebase for submission
+        if (!foundSub) {
+          try {
+            const subDoc = await getDoc(doc(db, "submissions", subId))
+            if (subDoc.exists()) {
+              foundSub = subDoc.data()
+            }
+          } catch(e) {}
+        }
+
+        if (foundSub) {
+          setSubmission(foundSub)
+          foundAss = storedAssessments.find((a: any) => a.id === foundSub.assessmentId)
+          
+          // 3. Fallback to Firebase for assessment
+          if (!foundAss) {
+            try {
+              const assDoc = await getDoc(doc(db, "assessments", foundSub.assessmentId))
+              if (assDoc.exists()) {
+                foundAss = assDoc.data()
+              }
+            } catch(e) {}
+          }
+          
+          if (foundAss) {
+            setAssessment(foundAss)
+          }
+        }
+      } catch (e) {}
+    }
+    loadData()
   }, [subId])
 
   if (!submission || !assessment) {

@@ -126,7 +126,7 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
   const [studentSession, setStudentSession] = useState<any>(null)
   const [currentQ, setCurrentQ] = useState(0)
   const [answers, setAnswers] = useState<Record<string, any>>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [submitted, setSubmitted] = useState<string | null>(null)
   const [blockError, setBlockError] = useState<string | null>(null)
   const [confirmSubmit, setConfirmSubmit] = useState(false)
 
@@ -280,7 +280,7 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       return;
     }
 
-    setSubmitted(true)
+    setSubmitted('saving')
     
     try {
       const newSubmission = {
@@ -308,6 +308,9 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
 
       // Clear the active session so they can't simply refresh the page to try again
       localStorage.removeItem('demo_active_student_session')
+      
+      // Navigate directly to the results/pending review screen immediately
+      router.push(`/student/results/${newSubmission.id}`)
     } catch (err) {
       console.error(err)
     }
@@ -334,23 +337,11 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
   }
 
   if (submitted) {
+    // If the router push is still processing, show a quick loading state
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-slate-200">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-10 h-10 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Submitted Successfully</h2>
-          <p className="text-slate-500 mb-8">
-            Your teacher will review your answers before releasing your results.
-          </p>
-          <button 
-            onClick={() => router.push('/student/join')}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"
-          >
-            Return to Portal
-          </button>
-        </div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-bold text-slate-800">Saving Submission...</h2>
       </div>
     )
   }
