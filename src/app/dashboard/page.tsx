@@ -6,10 +6,10 @@ import { Users, BookOpen, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 export default function TeacherDashboard() {
   const [localAssessments, setLocalAssessments] = useState<any[]>([])
   const [stats, setStats] = useState({
-    students: '142',
-    assessments: '4',
-    submissions: '28',
-    deadlines: '2'
+    students: '0',
+    assessments: '0',
+    submissions: '0',
+    deadlines: '0'
   })
 
   useEffect(() => {
@@ -17,11 +17,8 @@ export default function TeacherDashboard() {
       const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
       setLocalAssessments(stored)
       
-      const storedStats = localStorage.getItem('demo_dashboard_stats')
-      if (storedStats) {
-        setStats(JSON.parse(storedStats))
-      } else if (stored.length > 0) {
-        // Automatically sync active assessments if they haven't manually overridden stats yet
+      // Automatically sync active assessments count
+      if (stored.length > 0) {
         setStats(s => ({...s, assessments: stored.length.toString()}))
       }
     } catch (e) {
@@ -30,9 +27,7 @@ export default function TeacherDashboard() {
   }, [])
 
   const handleStatChange = (key: string, value: string) => {
-    const newStats = { ...stats, [key]: value }
-    setStats(newStats)
-    localStorage.setItem('demo_dashboard_stats', JSON.stringify(newStats))
+    setStats({ ...stats, [key]: value })
   }
 
   return (
