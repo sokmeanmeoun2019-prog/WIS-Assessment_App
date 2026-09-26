@@ -230,17 +230,15 @@ export default function CreateAssessment() {
     }
     localStorage.setItem('demo_assessments', JSON.stringify(existing))
 
-    // Save to Firebase!
-    try {
-      await setDoc(doc(db, "assessments", targetId), newAssessment);
-    } catch (err) {
+    // Save to Firebase! (Non-blocking so it doesn't hang the UI)
+    setDoc(doc(db, "assessments", targetId), newAssessment).catch((err) => {
       console.error("Failed to save to Firebase", err);
-    }
+    });
 
     setTimeout(() => {
       setLoading(false)
       router.push('/dashboard/assessments')
-    }, 500)
+    }, 300)
   }
 
   return (
