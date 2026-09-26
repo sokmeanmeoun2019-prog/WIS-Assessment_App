@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { BookOpen, Plus, Clock, Pencil, Trash2, Key, X, Copy, Check, Share2 } from 'lucide-react'
-import { db } from '@/lib/firebase'
+import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, deleteDoc, setDoc } from 'firebase/firestore'
 
 export default function AssessmentsPage() {
@@ -18,7 +18,11 @@ export default function AssessmentsPage() {
       try {
         let stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         
-        // Optimistic UI: Immediately show what we have in local storage!
+        // Optimistic UI: Filter stored
+        if (auth.currentUser?.uid) {
+          stored = stored.filter((a: any) => !a.teacherId || a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy')
+        }
+
         if (stored.length > 0) {
           setAssessments(stored);
         }
@@ -26,8 +30,12 @@ export default function AssessmentsPage() {
         try {
           // Fetch from Firebase (Background)
           const querySnapshot = await getDocs(collection(db, "assessments"));
-          const cloudAssessments = querySnapshot.docs.map(doc => doc.data());
+          let cloudAssessments = querySnapshot.docs.map(doc => doc.data());
           
+          if (auth.currentUser?.uid) {
+            cloudAssessments = cloudAssessments.filter(a => !a.teacherId || a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy');
+          }
+
           // Merge logic: cloud overwrites local, except for local drafts that are newer or don't exist in cloud
           const merged = [...stored];
           cloudAssessments.forEach(cloudItem => {

@@ -5,6 +5,10 @@ import {
   LayoutDashboard, Users, BookOpen, PlusCircle, 
   ClipboardList, CheckSquare, BarChart, Settings, LogOut, Atom, Lightbulb
 } from 'lucide-react'
+import { auth } from '@/lib/firebase'
+import { useAuth } from '@/context/AuthContext'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 const sidebarLinks = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -22,6 +26,18 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const { user, loading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login')
+    }
+  }, [user, loading, router])
+
+  if (loading || !user) {
+    return <div className="h-screen w-screen flex items-center justify-center bg-slate-50 text-slate-500">Loading your workspace...</div>
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -74,10 +90,21 @@ export default function DashboardLayout({
         </div>
 
         <div className="p-4 border-t border-white/10 relative">
-          <Link href="/" className="flex items-center justify-center w-full px-4 py-3 text-sm font-bold rounded-xl bg-white/5 hover:bg-rose-500 hover:text-white transition-all duration-300 text-rose-300 border border-transparent hover:border-rose-400/50 hover:shadow-lg hover:shadow-rose-500/20">
+          <button 
+            onClick={async () => {
+              // Sign out of Firebase
+              await auth.signOut();
+              // Clear the local cache so the next person doesn't see your data
+              localStorage.removeItem('demo_assessments');
+              localStorage.removeItem('demo_sessions');
+              localStorage.removeItem('demo_submissions');
+              window.location.href = '/login';
+            }} 
+            className="flex items-center justify-center w-full px-4 py-3 text-sm font-bold rounded-xl bg-white/5 hover:bg-rose-500 hover:text-white transition-all duration-300 text-rose-300 border border-transparent hover:border-rose-400/50 hover:shadow-lg hover:shadow-rose-500/20"
+          >
             <LogOut className="w-5 h-5 mr-3" />
             Sign Out
-          </Link>
+          </button>
         </div>
       </aside>
 

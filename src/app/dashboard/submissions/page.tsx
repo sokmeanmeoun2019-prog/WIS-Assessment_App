@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import { BlockMath, InlineMath } from 'react-katex'
-import { db } from '@/lib/firebase'
+import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore'
 
 // Helper to robustly compare HTML answers containing <math-field> tags
@@ -50,7 +50,13 @@ export default function SubmissionsPage() {
         try {
           // Fetch from Firebase (Background)
           const assessmentsSnap = await getDocs(collection(db, "assessments"));
-          const cloudAssessments = assessmentsSnap.docs.map(doc => doc.data());
+          let cloudAssessments = assessmentsSnap.docs.map(doc => doc.data());
+          
+          // Multi-tenancy filter
+          if (auth.currentUser?.uid) {
+            cloudAssessments = cloudAssessments.filter(a => !a.teacherId || a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy');
+          }
+
           if (cloudAssessments.length > 0) {
             // merge
             const merged = [...storedAssessments];
@@ -64,7 +70,14 @@ export default function SubmissionsPage() {
           }
 
           const subsSnap = await getDocs(collection(db, "submissions"));
-          const cloudSubs = subsSnap.docs.map(doc => doc.data());
+          let cloudSubs = subsSnap.docs.map(doc => doc.data());
+          
+          // Multi-tenancy filter for submissions (based on assessment ownership)
+          if (auth.currentUser?.uid) {
+            const ownedAssessmentIds = cloudAssessments.map(a => a.id);
+            cloudSubs = cloudSubs.filter(s => ownedAssessmentIds.includes(s.assessmentId));
+          }
+
           if (cloudSubs.length > 0) {
             const mergedSub = [...storedSubmissions];
             cloudSubs.forEach(cs => {

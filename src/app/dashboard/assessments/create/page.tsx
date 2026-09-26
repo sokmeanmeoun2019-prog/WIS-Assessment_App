@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle } from 'lucide-react'
 import MathEditor from '@/components/MathEditor'
-import { db } from '@/lib/firebase'
+import { db, auth } from '@/lib/firebase'
 import { doc, setDoc } from 'firebase/firestore'
 
 type QuestionType = 'MCQ' | 'SHORT_ANSWER' | 'PHYSICS_CALCULATION' | 'FILE_UPLOAD' | 'MATCHING' | 'FILL_IN_BLANK' | 'SECTION_BREAK'
@@ -217,7 +217,8 @@ export default function CreateAssessment() {
       questions,
       createdAt: new Date().toISOString(), // This overwrites updatedAt for new
       updatedAt: new Date().toISOString(),
-      status
+      status,
+      teacherId: auth.currentUser?.uid || 'legacy'
     }
     
     // Save to local storage for drafts
