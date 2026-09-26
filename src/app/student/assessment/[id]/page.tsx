@@ -190,14 +190,24 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       const loadData = async () => {
         try {
           let found = null;
-          // Try Firebase first
-          const docSnap = await getDoc(doc(db, "assessments", params.id as string));
-          if (docSnap.exists()) {
-            found = docSnap.data();
-          } else {
-            // Fallback to local storage
+          
+          // Try Firebase first with a 3-second timeout
+          try {
+            const fetchPromise = getDoc(doc(db, "assessments", params.id as string));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+            const docSnap: any = await Promise.race([fetchPromise, timeoutPromise]);
+            
+            if (docSnap && docSnap.exists && docSnap.exists()) {
+              found = docSnap.data();
+            }
+          } catch (fbErr) {
+            console.warn("Firebase failed to load assessment, falling back to local storage", fbErr);
+          }
+
+          // Fallback to local storage if Firebase failed or document didn't exist
+          if (!found) {
             const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
-            found = stored.find((a: any) => a.id === params.id)
+            found = stored.find((a: any) => String(a.id) === String(params.id))
           }
 
           if (found && found.questions) {
