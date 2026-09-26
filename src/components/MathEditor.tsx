@@ -14,6 +14,11 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   const [isLoaded, setIsLoaded] = useState(true)
   const [isFocused, setIsFocused] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
+  
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   // Sync initial value (only once or when empty to avoid cursor jumps)
   useEffect(() => {
@@ -60,7 +65,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
             mf.textContent = ''
           }
         })
-        onChange(editorRef.current.innerHTML)
+        onChangeRef.current(editorRef.current.innerHTML)
       }
     }
 
@@ -183,7 +188,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
           mf.textContent = ''
         }
       })
-      onChange(editorRef.current.innerHTML)
+      onChangeRef.current(editorRef.current.innerHTML)
     }
   }
 
