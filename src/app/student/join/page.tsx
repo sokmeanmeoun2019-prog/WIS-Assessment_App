@@ -102,9 +102,12 @@ export default function StudentJoin() {
       let foundSession = null;
       let foundAssessment = null;
 
-      // Check Cloud
+      // Check Cloud with a 3-second timeout to prevent 1-minute freezes
       try {
-        const qSnap = await getDocs(query(collection(db, "sessions"), where("code", "==", code.toUpperCase())));
+        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", code.toUpperCase())));
+        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+        const qSnap: any = await Promise.race([fetchSession, timeoutSession]);
+        
         if (!qSnap.empty) {
           foundSession = qSnap.docs[0].data();
         }
@@ -128,9 +131,12 @@ export default function StudentJoin() {
         return
       }
 
-      // Check Cloud for Assessment
+      // Check Cloud for Assessment with a 3-second timeout
       try {
-        const qSnap = await getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
+        const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
+        const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+        const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
+        
         if (!qSnap.empty) {
           foundAssessment = qSnap.docs[0].data();
         }
