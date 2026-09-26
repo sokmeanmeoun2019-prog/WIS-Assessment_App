@@ -21,6 +21,9 @@ const renderReadOnlyMath = (html: string | undefined) => {
   return html.replace(/<math-field/g, '<math-field readonly')
 }
 
+type Point = { x: number, y: number }
+type Path = { points: Point[], color: string, brushSize: number, tool: 'pen' | 'eraser' }
+
 const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSave: (url: string) => void, onCancel: () => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -28,51 +31,82 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
   const brushSize = 3
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
   
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+  const [paths, setPaths] = useState<Path[]>([])
+  const [currentPath, setCurrentPath] = useState<Path | null>(null)
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
+  const [canvasDim, setCanvasDim] = useState({ w: 800, h: 600 })
 
-    const img = new Image()
+  useEffect(() => {
+    const img = new window.Image()
     img.crossOrigin = "anonymous"
     img.src = imageUrl
     img.onload = () => {
-      // Calculate aspect ratio to fit within max width/height
       const maxWidth = 800
       const maxHeight = 600
-      let width = img.width
-      let height = img.height
-
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width)
-        width = maxWidth
+      let w = img.width
+      let h = img.height
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w)
+        w = maxWidth
       }
-      if (height > maxHeight) {
-        width = Math.round((width * maxHeight) / height)
-        height = maxHeight
+      if (h > maxHeight) {
+        w = Math.round((w * maxHeight) / h)
+        h = maxHeight
       }
-
-      canvas.width = width
-      canvas.height = height
-      
-      // Draw white background (just in case)
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, width, height)
-      
-      // Draw image
-      ctx.drawImage(img, 0, 0, width, height)
+      setCanvasDim({ w, h })
+      setBgImage(img)
     }
   }, [imageUrl])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !bgImage) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    // Set actual canvas size
+    canvas.width = canvasDim.w
+    canvas.height = canvasDim.h
+    
+    // Draw base layer
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height)
+    
+    // Create offscreen canvas for strokes
+    const offCanvas = document.createElement('canvas')
+    offCanvas.width = canvas.width
+    offCanvas.height = canvas.height
+    const offCtx = offCanvas.getContext('2d')
+    if (!offCtx) return
+    
+    const drawPath = (p: Path) => {
+      if (p.points.length === 0) return
+      offCtx.beginPath()
+      offCtx.moveTo(p.points[0].x, p.points[0].y)
+      offCtx.globalCompositeOperation = p.tool === 'eraser' ? 'destination-out' : 'source-over'
+      offCtx.strokeStyle = p.color
+      offCtx.lineWidth = p.tool === 'eraser' ? 20 : p.brushSize
+      offCtx.lineCap = 'round'
+      offCtx.lineJoin = 'round'
+      p.points.forEach(pt => offCtx.lineTo(pt.x, pt.y))
+      offCtx.stroke()
+    }
+    
+    paths.forEach(drawPath)
+    if (currentPath) drawPath(currentPath)
+    
+    // Composite offscreen canvas onto main canvas
+    ctx.drawImage(offCanvas, 0, 0)
+    
+  }, [paths, currentPath, bgImage, canvasDim])
 
   const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
-    // Support high DPI screens / scaling
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
-    
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY
@@ -82,31 +116,40 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault()
     setIsDrawing(true)
-    const { x, y } = getCoordinates(e)
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) {
-      ctx.beginPath()
-      ctx.moveTo(x, y)
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color
-      ctx.lineWidth = tool === 'eraser' ? 20 : brushSize
-    }
+    const pt = getCoordinates(e)
+    setCurrentPath({
+      tool,
+      color,
+      brushSize,
+      points: [pt]
+    })
   }
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault()
-    if (!isDrawing) return
-    const { x, y } = getCoordinates(e)
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) {
-      ctx.lineTo(x, y)
-      ctx.stroke()
-    }
+    if (!isDrawing || !currentPath) return
+    const pt = getCoordinates(e)
+    setCurrentPath({
+      ...currentPath,
+      points: [...currentPath.points, pt]
+    })
   }
 
   const stopDrawing = () => {
+    if (!isDrawing) return
     setIsDrawing(false)
+    if (currentPath) {
+      setPaths([...paths, currentPath])
+      setCurrentPath(null)
+    }
+  }
+  
+  const handleUndo = () => {
+    setPaths(paths.slice(0, -1))
+  }
+  
+  const handleClear = () => {
+    setPaths([])
   }
 
   const handleSave = () => {
@@ -132,6 +175,7 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
                 <Eraser className="w-4 h-4" />
               </button>
             </div>
+            
             {tool === 'pen' && (
               <div className="flex items-center gap-2 px-3 border-l border-slate-200">
                 {['#ef4444', '#22c55e', '#3b82f6', '#000000'].map(c => (
@@ -144,6 +188,25 @@ const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSa
                 ))}
               </div>
             )}
+            
+            <div className="flex items-center gap-2 px-3 border-l border-slate-200">
+              <button 
+                onClick={handleUndo} 
+                disabled={paths.length === 0}
+                className={`p-2 rounded-md flex items-center font-medium text-sm ${paths.length === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                title="Undo Last Stroke"
+              >
+                <Undo className="w-4 h-4 mr-1.5" /> Undo
+              </button>
+              <button 
+                onClick={handleClear} 
+                disabled={paths.length === 0}
+                className={`p-2 rounded-md flex items-center font-medium text-sm ${paths.length === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-red-600 hover:bg-red-50 hover:text-red-700'}`}
+                title="Clear All Annotations"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" /> Clear All
+              </button>
+            </div>
           </div>
           <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 p-2">
             <X className="w-6 h-6" />
