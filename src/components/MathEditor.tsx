@@ -16,9 +16,27 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   const editorRef = useRef<HTMLDivElement>(null)
   
   const onChangeRef = useRef(onChange);
+  const savedRangeRef = useRef<Range | null>(null);
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  // Continuously track the user's cursor but ONLY if it is inside THIS specific editor
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && editorRef.current) {
+        const range = sel.getRangeAt(0);
+        // Only save the cursor position if they are actively clicking/typing inside this exact box
+        if (editorRef.current.contains(range.commonAncestorContainer)) {
+          savedRangeRef.current = range.cloneRange();
+        }
+      }
+    };
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, []);
 
   // Sync initial value (only once or when empty to avoid cursor jumps)
   useEffect(() => {
@@ -37,7 +55,6 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
       // @ts-ignore
       if (window.mathVirtualKeyboard) {
         const target = e.target as HTMLElement;
-        // If clicking outside any math-field, outside the virtual keyboard, AND outside any toolbar buttons
         if (target && target.tagName && target.tagName.toLowerCase() !== 'math-field' && !target.closest('.ML__keyboard') && !target.closest('math-virtual-keyboard') && !target.closest('button')) {
           // @ts-ignore
           window.mathVirtualKeyboard.hide();
@@ -54,7 +71,6 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
 
     const handleMathInput = (e: Event) => {
       if (editorRef.current) {
-        // Sync the internal .value to the HTML attribute so innerHTML captures the math!
         const mathFields = editorRef.current.querySelectorAll('math-field')
         mathFields.forEach((mf: any) => {
           if (mf.value) {
@@ -70,14 +86,12 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     }
 
     const observer = new MutationObserver((mutations) => {
-      // Re-attach listeners to any new math-fields
       const mathFields = editorRef.current?.querySelectorAll('math-field')
       mathFields?.forEach((mf: any) => {
         mf.setAttribute('math-virtual-keyboard-policy', 'auto')
         mf.removeEventListener('input', handleMathInput)
         mf.addEventListener('input', handleMathInput)
 
-        // Fix the contentEditable click-stealing bug
         const handleInteraction = (e: Event) => {
           e.stopPropagation()
           mf.focus()
@@ -87,7 +101,6 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
         }
 
         const handleKeyDown = (e: KeyboardEvent) => {
-          // Physical keyboard backspace
           if (e.key === 'Backspace' && (!mf.value || mf.value.trim() === '')) {
             e.preventDefault();
             e.stopPropagation();
@@ -96,7 +109,6 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
         }
 
         const handleBeforeInput = (e: any) => {
-          // Virtual keyboard or native beforeinput backspace
           if (e.inputType === 'deleteContentBackward' && (!mf.value || mf.value.trim() === '')) {
             e.preventDefault();
             e.stopPropagation();
@@ -113,6 +125,8 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
             range.collapse(true);
             sel.removeAllRanges();
             sel.addRange(range);
+            // Update our saved range to match where they just deleted
+            savedRangeRef.current = range.cloneRange();
           }
           elementToDelete.remove();
           handleInput();
@@ -122,12 +136,9 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
 
         const handleMoveOut = (e: any) => {
           if (e.detail && e.detail.direction === 'backward') {
-            // Delete the math box if they backspace out of it or press left arrow at the start
-            // Wait, we only want to delete it if it's completely empty!
             if (!mf.value || mf.value.trim() === '' || mf.value.includes('placeholder')) {
                deleteMathBox();
             } else {
-               // Just move cursor before the wrapper
                const elementToSkip = mf.closest('span[contenteditable="false"]') || mf;
                const sel = window.getSelection();
                if (sel && elementToSkip.parentNode) {
@@ -136,11 +147,11 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
                  range.collapse(true);
                  sel.removeAllRanges();
                  sel.addRange(range);
+                 savedRangeRef.current = range.cloneRange();
                  mf.blur();
                }
             }
           } else if (e.detail && e.detail.direction === 'forward') {
-             // Move cursor after the wrapper
              const elementToSkip = mf.closest('span[contenteditable="false"]') || mf;
              const sel = window.getSelection();
              if (sel && elementToSkip.parentNode) {
@@ -149,6 +160,7 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
                range.collapse(true);
                sel.removeAllRanges();
                sel.addRange(range);
+               savedRangeRef.current = range.cloneRange();
                mf.blur();
              }
           }
@@ -173,11 +185,10 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     observer.observe(editorRef.current, { childList: true, subtree: true })
     
     return () => observer.disconnect()
-  }, [isLoaded, onChange])
+  }, [isLoaded])
 
   const handleInput = () => {
     if (editorRef.current) {
-      // Sync all math fields before extracting HTML
       const mathFields = editorRef.current.querySelectorAll('math-field')
       mathFields.forEach((mf: any) => {
         if (mf.value) {
@@ -199,28 +210,22 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   }
 
   const insertMath = (initialLatex?: string) => {
-    editorRef.current?.focus()
-    const selection = window.getSelection();
-    if (!selection) return;
+    if (!editorRef.current) return;
     
-    let range;
-    if (selection.rangeCount > 0) {
-      range = selection.getRangeAt(0);
+    let range: Range;
+    
+    // 100% FOOLPROOF FIX: We completely ignore the browser's global selection,
+    // which gets extremely confused by React re-renders and toolbars.
+    // Instead, we use the specific cursor position we meticulously saved
+    // the last time the user clicked inside THIS specific text box.
+    if (savedRangeRef.current) {
+      range = savedRangeRef.current.cloneRange();
     } else {
-      range = document.createRange();
-    }
-    
-    // CRITICAL FIX: Ensure the cursor/range is actually inside THIS specific editor.
-    // If the user clicks the "Insert" button on Option 2 while their cursor was resting 
-    // in Option 1, the browser might try to insert it into Option 1.
-    const isOutside = !editorRef.current?.contains(range.commonAncestorContainer);
-    if (isOutside && editorRef.current) {
+      // If they never clicked inside this box yet, force it to the end of this box.
       editorRef.current.focus();
       range = document.createRange();
       range.selectNodeContents(editorRef.current);
-      range.collapse(false); // Collapse to the end of this editor
-      selection.removeAllRanges();
-      selection.addRange(range);
+      range.collapse(false);
     }
     
     const mf: any = document.createElement('math-field');
