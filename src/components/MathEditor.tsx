@@ -326,8 +326,8 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
         }
       `}} />
       
-      {/* Toolbar */}
-      <div className={`${compact ? 'hidden group-focus-within/math:flex' : 'flex'} bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center`}>
+      {/* Toolbar - Now always visible to prevent UI confusion! */}
+      <div className="flex bg-slate-50 border-b border-slate-200 p-2 flex-wrap gap-2 items-center">
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); exec('bold'); }}
