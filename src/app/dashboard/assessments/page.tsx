@@ -193,7 +193,16 @@ export default function AssessmentsPage() {
         status: 'ACTIVE',
         createdAt: new Date().toISOString()
       }
-      saveSessions([...sessions, newSession])
+      
+      const nextSessions = [...sessions, newSession];
+      setSessions(nextSessions);
+      localStorage.setItem('demo_sessions', JSON.stringify(nextSessions));
+      
+      // Push to cloud instantly so students can access it
+      try {
+        setDoc(doc(db, "sessions", newSession.id), newSession);
+      } catch(e) {}
+      
       copyLinkOnly(newSession)
       showToast("New session created. Direct assessment link copied to clipboard!")
     }
