@@ -82,8 +82,8 @@ export default function StudentResultsPage() {
           ) : results.map((r) => {
             const isPending = r.status === 'Needs Grading' || r.score === undefined
             
-            return (
-              <Link href={`/student/results/${r.id}`} key={r.id} className={`block p-6 flex items-center justify-between transition-colors ${isPending ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}>
+            const InnerContent = (
+              <>
                 <div className="flex items-center">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold mr-4 ${
                     isPending ? 'bg-slate-200 text-slate-500' :
@@ -112,6 +112,16 @@ export default function StudentResultsPage() {
                     View Paper
                   </div>
                 )}
+              </>
+            )
+            
+            return isPending ? (
+              <div key={r.id} className="block p-6 flex items-center justify-between transition-colors bg-slate-50/50 cursor-not-allowed opacity-80" onClick={() => alert("This paper is still being graded by your teacher. Check back later.")}>
+                {InnerContent}
+              </div>
+            ) : (
+              <Link href={`/student/results/${r.id}`} key={r.id} className="block p-6 flex items-center justify-between transition-colors hover:bg-slate-50">
+                {InnerContent}
               </Link>
             )
           })}

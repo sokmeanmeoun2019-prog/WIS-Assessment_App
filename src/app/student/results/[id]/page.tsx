@@ -47,6 +47,21 @@ export default function StudentReviewPage() {
     )
   }
 
+  if (submission.status === 'Needs Grading' || submission.score === undefined) {
+    return (
+      <div className="max-w-4xl mx-auto pb-24 pt-12 flex flex-col items-center justify-center">
+        <button onClick={() => router.back()} className="mb-6 self-start flex items-center text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Results
+        </button>
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center max-w-md">
+          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Pending Review</h2>
+          <p className="text-slate-500">This paper is currently being graded by your teacher. Your results and corrections will appear here once published.</p>
+        </div>
+      </div>
+    )
+  }
+
   const headerFormat = assessment.headerFormat || {
     date: new Date().toLocaleDateString(),
     grade: assessment.grade || 'Unknown',
