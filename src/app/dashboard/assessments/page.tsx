@@ -18,8 +18,13 @@ export default function AssessmentsPage() {
       try {
         let stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         
+        // Optimistic UI: Immediately show what we have in local storage!
+        if (stored.length > 0) {
+          setAssessments(stored);
+        }
+
         try {
-          // Fetch from Firebase
+          // Fetch from Firebase (Background)
           const querySnapshot = await getDocs(collection(db, "assessments"));
           const cloudAssessments = querySnapshot.docs.map(doc => doc.data());
           
@@ -36,11 +41,12 @@ export default function AssessmentsPage() {
           
           stored = merged;
           localStorage.setItem('demo_assessments', JSON.stringify(stored));
+          setAssessments(stored);
         } catch (fbError) {
           console.error("Firebase fetch error", fbError);
         }
 
-        // Add a dummy one if none exist
+        // Add a dummy one if none exist and Firebase is empty
         if (stored.length === 0) {
           const dummy = {
             id: '1',
@@ -62,8 +68,6 @@ export default function AssessmentsPage() {
           };
           setAssessments([dummy]);
           localStorage.setItem('demo_assessments', JSON.stringify([dummy]));
-        } else {
-          setAssessments(stored)
         }
 
         const d = JSON.parse(localStorage.getItem('demo_defaults_settings') || 'null')
