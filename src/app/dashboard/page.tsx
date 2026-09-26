@@ -40,14 +40,14 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard title="Total Students" value={stats.students} onChange={(v: string) => handleStatChange('students', v)} icon={Users} color="bg-blue-500" />
         <StatCard title="Active Assessments" value={stats.assessments} onChange={(v: string) => handleStatChange('assessments', v)} icon={BookOpen} color="bg-indigo-500" />
         <StatCard title="Submissions to Grade" value={stats.submissions} onChange={(v: string) => handleStatChange('submissions', v)} icon={CheckCircle} color="bg-orange-500" />
         <StatCard title="Upcoming Deadlines" value={stats.deadlines} onChange={(v: string) => handleStatChange('deadlines', v)} icon={Clock} color="bg-red-500" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
@@ -85,11 +85,11 @@ export default function TeacherDashboard() {
 function StatCard({ title, value, onChange, icon: Icon, color }: any) {
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex items-center space-x-4">
-      <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-white ${color}`}>
+      <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${color}`}>
         <Icon className="w-7 h-7" />
       </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium text-slate-500 whitespace-nowrap">{title}</p>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-500 leading-snug">{title}</p>
         <input 
           type="text" 
           value={value}
