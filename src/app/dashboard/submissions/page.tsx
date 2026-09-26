@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef } from 'react'
-import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save } from 'lucide-react'
+import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save, Undo, Trash2 } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore'
