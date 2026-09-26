@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 };
 
 import { Suspense } from 'react';
+import { AuthProvider } from '@/context/AuthContext';
 
 export default function RootLayout({
   children,
@@ -20,9 +21,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading application...</div>}>
-          {children}
-        </Suspense>
+        <AuthProvider>
+          <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading application...</div>}>
+            {children}
+          </Suspense>
+        </AuthProvider>
         <Script src="https://unpkg.com/mathlive" strategy="lazyOnload" />
       </body>
     </html>
