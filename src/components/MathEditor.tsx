@@ -213,7 +213,9 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
     // CRITICAL FIX: Ensure the cursor/range is actually inside THIS specific editor.
     // If the user clicks the "Insert" button on Option 2 while their cursor was resting 
     // in Option 1, the browser might try to insert it into Option 1.
-    if (editorRef.current && !editorRef.current.contains(range.commonAncestorContainer)) {
+    const isOutside = !editorRef.current?.contains(range.commonAncestorContainer);
+    if (isOutside && editorRef.current) {
+      editorRef.current.focus();
       range = document.createRange();
       range.selectNodeContents(editorRef.current);
       range.collapse(false); // Collapse to the end of this editor
