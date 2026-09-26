@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: "Modern assessment platform for Physics at WIS Phnom Penh",
 };
 
+import { Suspense } from 'react';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -18,7 +20,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {children}
+        <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading application...</div>}>
+          {children}
+        </Suspense>
         <Script src="https://unpkg.com/mathlive" strategy="lazyOnload" />
       </body>
     </html>
