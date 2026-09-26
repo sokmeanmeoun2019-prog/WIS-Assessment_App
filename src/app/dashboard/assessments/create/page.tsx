@@ -39,7 +39,7 @@ export default function CreateAssessment() {
   const [grade, setGrade] = useState('')
   const [type, setType] = useState('QUIZ')
   const [timeLimit, setTimeLimit] = useState(30)
-  
+  const [availableClasses, setAvailableClasses] = useState<string[]>(['Grade 9A', 'Grade 9B', 'Grade 12A', 'Grade 12B', 'Grade 12C'])
 
   const [headerState, setHeaderState] = useState({
     date: '',
