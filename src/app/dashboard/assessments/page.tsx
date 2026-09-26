@@ -139,7 +139,8 @@ export default function AssessmentsPage() {
       className: 'New Class',
       code: generateCode(),
       status: 'ACTIVE',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      deadline: ''
     }
     const nextSessions = [...sessions, newSession];
     setSessions(nextSessions);
@@ -220,7 +221,8 @@ export default function AssessmentsPage() {
         className: 'General Class',
         code: generateCode(),
         status: 'ACTIVE',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        deadline: ''
       }
       
       const nextSessions = [...sessions, newSession];
@@ -460,7 +462,16 @@ export default function AssessmentsPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center space-x-4 border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-4">
+                        <div className="flex items-center space-x-6 border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-6">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1">Deadline (Optional)</label>
+                            <input 
+                              type="datetime-local" 
+                              value={s.deadline || ''} 
+                              onChange={(e) => handleUpdateSession(s.id, { deadline: e.target.value })}
+                              className="text-sm font-bold text-slate-700 outline-none border-b border-dashed border-slate-300 focus:border-indigo-500 bg-transparent"
+                            />
+                          </div>
                           <div>
                             <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
                             <select 

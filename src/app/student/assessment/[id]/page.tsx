@@ -185,6 +185,11 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
         return
       }
 
+      if (activeSession.deadline && new Date() > new Date(activeSession.deadline)) {
+        setBlockError("The deadline for this assessment has passed. You can no longer access it.")
+        return
+      }
+
       setStudentSession(activeSession)
 
       const loadData = async () => {
@@ -269,6 +274,12 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
   }
 
   const handleSubmit = async () => {
+    // Strict Deadline Enforcement
+    if (studentSession?.deadline && new Date() > new Date(studentSession.deadline)) {
+      setBlockError("The deadline for this assessment has passed. Your answers cannot be submitted.");
+      return;
+    }
+
     setSubmitted(true)
     
     try {

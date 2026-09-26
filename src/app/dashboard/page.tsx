@@ -82,11 +82,14 @@ export default function TeacherDashboard() {
     // Submissions that need grading
     const toGrade = subs.filter(s => s.status !== 'Graded')
 
+    // Only count sessions that actually have a future deadline set
+    const upcomingDeadlines = sess.filter(s => s.deadline && new Date(s.deadline) > new Date()).length
+
     setStats({
       students: uniqueStudents.size,
       assessments: ass.length,
       submissions: toGrade.length,
-      deadlines: sess.length // Using active sessions count as proxy for deadlines
+      deadlines: upcomingDeadlines
     })
   }
 

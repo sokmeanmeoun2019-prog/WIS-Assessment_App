@@ -131,6 +131,11 @@ export default function StudentJoin() {
         return
       }
 
+      if (foundSession.deadline && new Date() > new Date(foundSession.deadline)) {
+        setError("The deadline for this assessment has passed.")
+        return
+      }
+
       // Check Cloud for Assessment with a 3-second timeout
       try {
         const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
@@ -193,7 +198,8 @@ export default function StudentJoin() {
         sessionId: session.id,
         assessmentId: assessment.id,
         className: session.className,
-        startedAt: new Date().toISOString()
+        startedAt: new Date().toISOString(),
+        deadline: session.deadline || null
       }
 
       localStorage.setItem('demo_active_student_session', JSON.stringify(studentSession))
