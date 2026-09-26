@@ -241,10 +241,18 @@ export default function StudentReviewPage() {
                          {studentAnswer?.text ? (
                            <div className="prose max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(studentAnswer.text) }} />
                          ) : (
-                           <div className="text-slate-400 italic">No solution provided.</div>
+                           <div className="text-slate-400 italic">No typed solution provided.</div>
+                         )}
+                         {studentAnswer?.image && (
+                           <div className="mt-4">
+                             <p className="text-xs text-slate-500 mb-2 uppercase font-bold tracking-wider">Your Worksheet (with Teacher's marks):</p>
+                             <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden">
+                               <img src={studentAnswer.image} alt="Graded Worksheet" className="max-w-full max-h-96 object-contain rounded-md" />
+                             </div>
+                           </div>
                          )}
                          <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-indigo-600 font-medium italic">
-                           Note: Typed solutions are graded manually by your teacher.
+                           Note: Typed solutions and worksheets are graded manually by your teacher.
                          </div>
                       </div>
                     )}

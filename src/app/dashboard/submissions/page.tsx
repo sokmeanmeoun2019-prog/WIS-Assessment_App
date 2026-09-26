@@ -1,6 +1,5 @@
-"use client"
-import React, { useState, useEffect } from 'react'
-import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, Trash2, X, Save } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import { BlockMath, InlineMath } from 'react-katex'
 import { db, auth } from '@/lib/firebase'
@@ -22,10 +21,168 @@ const renderReadOnlyMath = (html: string | undefined) => {
   return html.replace(/<math-field/g, '<math-field readonly')
 }
 
+const ImageAnnotator = ({ imageUrl, onSave, onCancel }: { imageUrl: string, onSave: (url: string) => void, onCancel: () => void }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [color, setColor] = useState('#ef4444') // Red
+  const [brushSize, setBrushSize] = useState(3)
+  const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
+  
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = imageUrl
+    img.onload = () => {
+      // Calculate aspect ratio to fit within max width/height
+      const maxWidth = 800
+      const maxHeight = 600
+      let width = img.width
+      let height = img.height
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width)
+        width = maxWidth
+      }
+      if (height > maxHeight) {
+        width = Math.round((width * maxHeight) / height)
+        height = maxHeight
+      }
+
+      canvas.width = width
+      canvas.height = height
+      
+      // Draw white background (just in case)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+      
+      // Draw image
+      ctx.drawImage(img, 0, 0, width, height)
+    }
+  }, [imageUrl])
+
+  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    // Support high DPI screens / scaling
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    }
+  }
+
+  const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    setIsDrawing(true)
+    const { x, y } = getCoordinates(e)
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) {
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color
+      ctx.lineWidth = tool === 'eraser' ? 20 : brushSize
+    }
+  }
+
+  const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    if (!isDrawing) return
+    const { x, y } = getCoordinates(e)
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) {
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    }
+  }
+
+  const stopDrawing = () => {
+    setIsDrawing(false)
+  }
+
+  const handleSave = () => {
+    if (canvasRef.current) {
+      onSave(canvasRef.current.toDataURL('image/jpeg', 0.8))
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] max-w-5xl w-full">
+        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <h2 className="font-bold text-slate-800 flex items-center">
+            <Pencil className="w-5 h-5 mr-2 text-indigo-600" />
+            Grade Worksheet
+          </h2>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1 shadow-sm">
+              <button onClick={() => setTool('pen')} className={`p-2 rounded-md ${tool === 'pen' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`} title="Pen">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button onClick={() => setTool('eraser')} className={`p-2 rounded-md ${tool === 'eraser' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`} title="Eraser">
+                <Eraser className="w-4 h-4" />
+              </button>
+            </div>
+            {tool === 'pen' && (
+              <div className="flex items-center gap-2 px-3 border-l border-slate-200">
+                {['#ef4444', '#22c55e', '#3b82f6', '#000000'].map(c => (
+                  <button 
+                    key={c} 
+                    onClick={() => setColor(c)} 
+                    className={`w-6 h-6 rounded-full border-2 ${color === c ? 'border-slate-800 scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 p-2">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <div className="p-6 bg-slate-100 flex-1 overflow-auto flex items-center justify-center touch-none">
+          <canvas
+            ref={canvasRef}
+            onPointerDown={startDrawing}
+            onPointerMove={draw}
+            onPointerUp={stopDrawing}
+            onPointerLeave={stopDrawing}
+            className="shadow-md rounded border border-slate-300 bg-white cursor-crosshair max-w-full max-h-full object-contain touch-none"
+            style={{ touchAction: 'none' }}
+          />
+        </div>
+        
+        <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 bg-white">
+          <button onClick={onCancel} className="px-5 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-xl transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center transition-colors shadow-sm">
+            <Save className="w-4 h-4 mr-2" />
+            Save Annotations
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SubmissionsPage() {
   const [submissions, setSubmissions] = useState<any[]>([])
   const [assessments, setAssessments] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  
+  // Annotation state
+  const [annotatingImage, setAnnotatingImage] = useState<{ subId: string, qId: string, url: string } | null>(null)
   
   // Load from localStorage
   useEffect(() => {
@@ -122,6 +279,34 @@ export default function SubmissionsPage() {
   };
   loadData();
 }, [])
+
+  const handleSaveAnnotation = async (dataUrl: string) => {
+    if (!annotatingImage) return;
+    const { subId, qId } = annotatingImage;
+    
+    const updated = submissions.map((s: any) => {
+      if (s.id === subId) {
+        const nextAnswers = { ...s.answers }
+        if (nextAnswers[qId]) {
+          nextAnswers[qId] = { ...nextAnswers[qId], image: dataUrl }
+        }
+        return { ...s, answers: nextAnswers }
+      }
+      return s;
+    });
+    
+    setSubmissions(updated);
+    if (!subId.startsWith('mock-')) {
+      localStorage.setItem('demo_submissions', JSON.stringify(updated));
+      const targetSub = updated.find(s => s.id === subId);
+      if (targetSub) {
+        try {
+          setDoc(doc(db, "submissions", subId), targetSub);
+        } catch (e) {}
+      }
+    }
+    setAnnotatingImage(null);
+  }
 
   const markAsGraded = (id: string) => {
     const updated = submissions.map(s => {
@@ -394,7 +579,15 @@ export default function SubmissionsPage() {
                                     
                                     {studentAnswer?.image && (
                                       <div>
-                                        <p className="text-xs text-slate-500 mb-2 uppercase font-bold tracking-wider">Uploaded Worksheet:</p>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Uploaded Worksheet:</p>
+                                          <button 
+                                            onClick={() => setAnnotatingImage({ subId: sub.id, qId: q.id, url: studentAnswer.image })}
+                                            className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center bg-indigo-50 px-2 py-1 rounded-md"
+                                          >
+                                            <Pencil className="w-3 h-3 mr-1" /> Annotate Image
+                                          </button>
+                                        </div>
                                         <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden">
                                           <img src={studentAnswer.image} alt="Student Worksheet" className="max-w-full max-h-96 object-contain rounded-md" />
                                         </div>
@@ -503,6 +696,14 @@ export default function SubmissionsPage() {
           )}
         </div>
       </div>
+      
+      {annotatingImage && (
+        <ImageAnnotator
+          imageUrl={annotatingImage.url}
+          onSave={handleSaveAnnotation}
+          onCancel={() => setAnnotatingImage(null)}
+        />
+      )}
     </div>
   )
 }
