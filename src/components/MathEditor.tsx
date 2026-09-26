@@ -196,9 +196,25 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
   const insertMath = (initialLatex?: string) => {
     editorRef.current?.focus()
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
+    if (!selection) return;
     
-    const range = selection.getRangeAt(0);
+    let range;
+    if (selection.rangeCount > 0) {
+      range = selection.getRangeAt(0);
+    } else {
+      range = document.createRange();
+    }
+    
+    // CRITICAL FIX: Ensure the cursor/range is actually inside THIS specific editor.
+    // If the user clicks the "Insert" button on Option 2 while their cursor was resting 
+    // in Option 1, the browser might try to insert it into Option 1.
+    if (editorRef.current && !editorRef.current.contains(range.commonAncestorContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(editorRef.current);
+      range.collapse(false); // Collapse to the end of this editor
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
     
     const mf: any = document.createElement('math-field');
     mf.style.display = 'inline-block';
@@ -256,7 +272,8 @@ export default function MathEditor({ value, onChange, placeholder, minHeight = '
 
   const insertMathSymbol = (latex: string) => {
     const activeEl = document.activeElement as any;
-    if (activeEl && activeEl.tagName && activeEl.tagName.toLowerCase() === 'math-field') {
+    // Only insert into the active math field if it actually belongs to THIS specific editor box.
+    if (activeEl && activeEl.tagName && activeEl.tagName.toLowerCase() === 'math-field' && editorRef.current?.contains(activeEl)) {
       activeEl.insert(latex);
       activeEl.focus();
       handleInput();
