@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, CheckCircle, FileText, Download } from 'lucide-react'
 import 'katex/dist/katex.min.css'
+import { db } from '@/lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
 
 const renderReadOnlyMath = (html: string | undefined) => {
   if (!html) return ''
@@ -17,9 +19,6 @@ const renderReadOnlyMath = (html: string | undefined) => {
   
   return cleaned
 }
-
-import { db } from '@/lib/firebase'
-import { doc, getDoc } from 'firebase/firestore'
 
 export default function StudentReviewPage() {
   const params = useParams()

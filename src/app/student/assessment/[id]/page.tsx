@@ -302,6 +302,9 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       // Save to Firebase (Non-blocking, fire-and-forget so UI doesn't hang)
       setDoc(doc(db, "submissions", newSubmission.id), newSubmission).catch(fbErr => {
         console.error("Firebase submission error", fbErr);
+        if (fbErr.code === 'permission-denied') {
+          alert("Firebase Warning: Could not save to cloud due to missing Firestore permissions. Please update your Firebase Rules to allow unauthenticated writes to 'submissions'.");
+        }
       });
 
       // Clear the active session so they can't simply refresh the page to try again
