@@ -34,38 +34,46 @@ export default function StudentReviewPage() {
         let foundSub = null
         let foundAss = null
 
-        // 1. Check local storage first
-        const storedSubs = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
-        foundSub = storedSubs.find((s: any) => s.id === subId)
+        // 1. Check local storage first (Optimistic)
+        let storedSubs = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+        foundSub = storedSubs.find((s: any) => String(s.id) === String(subId))
         
-        const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
+        let storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
+        foundAss = storedAssessments.find((a: any) => String(a.id) === String(foundSub?.assessmentId))
         
-        // 2. Fallback to Firebase for submission
-        if (!foundSub) {
-          try {
-            const subDoc = await getDoc(doc(db, "submissions", subId))
-            if (subDoc.exists()) {
-              foundSub = subDoc.data()
-            }
-          } catch(e) {}
+        if (foundSub) setSubmission(foundSub);
+        if (foundAss) setAssessment(foundAss);
+
+        // 2. Always fetch latest from Firebase to sync grades!
+        try {
+          const subDoc = await getDoc(doc(db, "submissions", subId))
+          if (subDoc.exists()) {
+            foundSub = subDoc.data()
+            setSubmission(foundSub)
+            
+            // Update local storage so it persists
+            const idx = storedSubs.findIndex((s: any) => String(s.id) === String(subId))
+            if (idx >= 0) storedSubs[idx] = foundSub; else storedSubs.push(foundSub);
+            localStorage.setItem('demo_submissions', JSON.stringify(storedSubs))
+          }
+        } catch(e) {
+          console.error("Firebase sub fetch error", e)
         }
 
         if (foundSub) {
-          setSubmission(foundSub)
-          foundAss = storedAssessments.find((a: any) => a.id === foundSub.assessmentId)
-          
-          // 3. Fallback to Firebase for assessment
-          if (!foundAss) {
-            try {
-              const assDoc = await getDoc(doc(db, "assessments", foundSub.assessmentId))
-              if (assDoc.exists()) {
-                foundAss = assDoc.data()
-              }
-            } catch(e) {}
-          }
-          
-          if (foundAss) {
-            setAssessment(foundAss)
+          // 3. Fetch assessment from Firebase if needed or update it
+          try {
+            const assDoc = await getDoc(doc(db, "assessments", foundSub.assessmentId))
+            if (assDoc.exists()) {
+              foundAss = assDoc.data()
+              setAssessment(foundAss)
+              
+              const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAss.id))
+              if (idx >= 0) storedAssessments[idx] = foundAss; else storedAssessments.push(foundAss);
+              localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments))
+            }
+          } catch(e) {
+            console.error("Firebase ass fetch error", e)
           }
         }
       } catch (e) {}

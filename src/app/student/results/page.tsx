@@ -8,16 +8,43 @@ export default function StudentResultsPage() {
   const [results, setResults] = useState<any[]>([])
 
   useEffect(() => {
-    try {
-      const storedIdentity = JSON.parse(localStorage.getItem('demo_student_identity') || 'null')
-      if (storedIdentity) {
-        setIdentity(storedIdentity)
-        
-        const submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
-        const mySubmissions = submissions.filter((s: any) => s.studentId === storedIdentity.studentId)
-        setResults(mySubmissions)
-      }
-    } catch (e) {}
+    const fetchResults = async () => {
+      try {
+        const storedIdentity = JSON.parse(localStorage.getItem('demo_student_identity') || 'null')
+        if (storedIdentity) {
+          setIdentity(storedIdentity)
+          
+          let submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+          
+          // Show local optimistically
+          setResults(submissions.filter((s: any) => s.studentId === storedIdentity.studentId))
+
+          try {
+            // Fetch latest from Firebase
+            const { db } = await import('@/lib/firebase')
+            const { collection, getDocs } = await import('firebase/firestore')
+            
+            const subsSnap = await getDocs(collection(db, "submissions"))
+            const cloudSubs = subsSnap.docs.map(d => d.data())
+            
+            // Merge cloud with local
+            const merged = [...submissions]
+            cloudSubs.forEach(cs => {
+              const idx = merged.findIndex(s => String(s.id) === String(cs.id))
+              if (idx >= 0) merged[idx] = cs; else merged.push(cs);
+            })
+            
+            submissions = merged
+            localStorage.setItem('demo_submissions', JSON.stringify(submissions))
+            
+            setResults(submissions.filter((s: any) => s.studentId === storedIdentity.studentId))
+          } catch (fbErr) {
+            console.error("Firebase sync error", fbErr)
+          }
+        }
+      } catch (e) {}
+    }
+    fetchResults()
   }, [])
 
   if (!identity) {
