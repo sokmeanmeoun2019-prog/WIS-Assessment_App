@@ -299,12 +299,10 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       const existing = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
       localStorage.setItem('demo_submissions', JSON.stringify([newSubmission, ...existing]))
       
-      // Save to Firebase
-      try {
-        await setDoc(doc(db, "submissions", newSubmission.id), newSubmission);
-      } catch (fbErr) {
+      // Save to Firebase (Non-blocking, fire-and-forget so UI doesn't hang)
+      setDoc(doc(db, "submissions", newSubmission.id), newSubmission).catch(fbErr => {
         console.error("Firebase submission error", fbErr);
-      }
+      });
 
       // Clear the active session so they can't simply refresh the page to try again
       localStorage.removeItem('demo_active_student_session')
