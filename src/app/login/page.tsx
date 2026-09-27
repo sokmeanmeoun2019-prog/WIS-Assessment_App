@@ -1,5 +1,5 @@
 "use client"
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { auth, googleProvider } from '@/lib/firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
@@ -12,6 +12,16 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  
+  // Important for mobile redirect flows: If auth state changes to logged in, push to dashboard
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        router.push('/dashboard')
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,10 +44,21 @@ export default function LoginPage() {
   const handleGoogle = async () => {
     setError('')
     try {
+      // First try popup (works best on desktop)
       await signInWithPopup(auth, googleProvider)
       router.push('/dashboard')
     } catch (err: any) {
-      setError(err.message)
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/popup-blocked') {
+        // Fallback to redirect if popup is blocked (common in iOS in-app browsers like Telegram/Facebook)
+        try {
+          const { signInWithRedirect } = await import('firebase/auth');
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr: any) {
+          setError(redirectErr.message);
+        }
+      } else {
+        setError(err.message)
+      }
     }
   }
 
