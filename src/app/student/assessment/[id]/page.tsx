@@ -307,10 +307,13 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       // Clear the active session so they can't simply refresh the page to try again
       localStorage.removeItem('demo_active_student_session')
       
-      // Navigate directly to the results/pending review screen immediately
-      router.push(`/student/results/${newSubmission.id}`)
+      // Navigate directly using window.location.href to guarantee a reliable redirect
+      window.location.href = `/student/results/${newSubmission.id}`
     } catch (err) {
       console.error(err)
+      // If something fails, at least let them see an error or navigate back
+      alert("Something went wrong saving your submission.")
+      window.location.href = '/student/join'
     }
   }
 
