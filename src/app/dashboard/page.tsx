@@ -29,10 +29,10 @@ export default function TeacherDashboard() {
         let localSess = JSON.parse(localStorage.getItem('demo_sessions') || '[]')
 
         if (user?.uid) {
-          localAss = localAss.filter((a: any) => a.teacherId === user.uid)
-          const ownedIds = localAss.map((a: any) => a.id)
-          localSubs = localSubs.filter((s: any) => ownedIds.includes(s.assessmentId))
-          localSess = localSess.filter((s: any) => ownedIds.includes(s.assessmentId))
+          localAss = localAss.filter((a: any) => a.teacherId === user.uid || a.teacherId === 'legacy' || !a.teacherId)
+          const ownedIds = localAss.map((a: any) => String(a.id))
+          localSubs = localSubs.filter((s: any) => ownedIds.includes(String(s.assessmentId)))
+          localSess = localSess.filter((s: any) => ownedIds.includes(String(s.assessmentId)))
         }
 
         setAssessments(localAss)
@@ -51,21 +51,31 @@ export default function TeacherDashboard() {
           getDocs(collection(db, "sessions"))
         ])
 
-        const cloudAss = assSnap.docs.map(d => d.data()).filter(a => a.teacherId === user.uid)
-        const ownedIds = cloudAss.map(a => a.id)
-        const cloudSubs = subSnap.docs.map(d => d.data()).filter(s => ownedIds.includes(s.assessmentId))
-        const cloudSess = sessSnap.docs.map(d => d.data()).filter(s => ownedIds.includes(s.assessmentId))
+        const cloudAss = assSnap.docs.map(d => d.data()).filter(a => a.teacherId === user.uid || a.teacherId === 'legacy' || !a.teacherId)
+        const ownedIds = cloudAss.map(a => String(a.id))
+        const cloudSubs = subSnap.docs.map(d => d.data()).filter(s => ownedIds.includes(String(s.assessmentId)))
+        const cloudSess = sessSnap.docs.map(d => d.data()).filter(s => ownedIds.includes(String(s.assessmentId)))
 
-        setAssessments(cloudAss)
-        setSubmissions(cloudSubs)
-        setSessions(cloudSess)
+        // Merge cloud and local so stats are perfectly accurate
+        const mergedAss = [...localAss];
+        cloudAss.forEach(ca => { if (!mergedAss.find(a => String(a.id) === String(ca.id))) mergedAss.push(ca) });
+        
+        const mergedSubs = [...localSubs];
+        cloudSubs.forEach(cs => { if (!mergedSubs.find(s => String(s.id) === String(cs.id))) mergedSubs.push(cs) });
+        
+        const mergedSess = [...localSess];
+        cloudSess.forEach(cs => { if (!mergedSess.find(s => String(s.sessionId) === String(cs.sessionId))) mergedSess.push(cs) });
+
+        setAssessments(mergedAss)
+        setSubmissions(mergedSubs)
+        setSessions(mergedSess)
+        
+        calculateStats(mergedAss, mergedSubs, mergedSess)
         
         // Save back merged/updated data to local
-        localStorage.setItem('demo_assessments', JSON.stringify(cloudAss))
-        localStorage.setItem('demo_submissions', JSON.stringify(cloudSubs))
-        localStorage.setItem('demo_sessions', JSON.stringify(cloudSess))
-
-        calculateStats(cloudAss, cloudSubs, cloudSess)
+        localStorage.setItem('demo_assessments', JSON.stringify(mergedAss))
+        localStorage.setItem('demo_submissions', JSON.stringify(mergedSubs))
+        localStorage.setItem('demo_sessions', JSON.stringify(mergedSess))
 
       } catch (e) {
         console.error("Dashboard fetch error:", e)

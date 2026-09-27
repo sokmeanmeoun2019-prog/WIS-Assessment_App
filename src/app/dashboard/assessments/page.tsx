@@ -20,7 +20,7 @@ export default function AssessmentsPage() {
         
         // Optimistic UI: Filter stored
         if (auth.currentUser?.uid) {
-          stored = stored.filter((a: any) => a.teacherId === auth.currentUser?.uid)
+          stored = stored.filter((a: any) => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId)
         }
 
         if (stored.length > 0) {
@@ -33,7 +33,7 @@ export default function AssessmentsPage() {
           let cloudAssessments = querySnapshot.docs.map(doc => doc.data());
           
           if (auth.currentUser?.uid) {
-            cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid);
+            cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId);
           }
 
           // Merge logic: cloud overwrites local, except for local drafts that are newer or don't exist in cloud
