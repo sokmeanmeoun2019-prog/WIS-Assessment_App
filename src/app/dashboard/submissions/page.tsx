@@ -283,14 +283,15 @@ export default function SubmissionsPage() {
           
           // Multi-tenancy filter
           if (auth.currentUser?.uid) {
-            cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid);
+            // Also include 'legacy' just in case they created it while logged out
+            cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy');
           }
 
           if (cloudAssessments.length > 0) {
             // merge
             const merged = [...storedAssessments];
             cloudAssessments.forEach(ca => {
-              const idx = merged.findIndex(a => a.id === ca.id);
+              const idx = merged.findIndex(a => String(a.id) === String(ca.id));
               if (idx >= 0) merged[idx] = ca; else merged.push(ca);
             });
             storedAssessments = merged;
@@ -302,15 +303,20 @@ export default function SubmissionsPage() {
           let cloudSubs = subsSnap.docs.map(doc => doc.data());
           
           // Multi-tenancy filter for submissions (based on assessment ownership)
+          // To be safe, if we have local assessments, consider them owned too.
+          const ownedAssessmentIds = new Set([
+            ...cloudAssessments.map(a => String(a.id)),
+            ...storedAssessments.map(a => String(a.id))
+          ]);
+          
           if (auth.currentUser?.uid) {
-            const ownedAssessmentIds = cloudAssessments.map(a => a.id);
-            cloudSubs = cloudSubs.filter(s => ownedAssessmentIds.includes(s.assessmentId));
+            cloudSubs = cloudSubs.filter(s => ownedAssessmentIds.has(String(s.assessmentId)));
           }
 
           if (cloudSubs.length > 0) {
             const mergedSub = [...storedSubmissions];
             cloudSubs.forEach(cs => {
-              const idx = mergedSub.findIndex(s => s.id === cs.id);
+              const idx = mergedSub.findIndex(s => String(s.id) === String(cs.id));
               if (idx >= 0) mergedSub[idx] = cs; else mergedSub.push(cs);
             });
             storedSubmissions = mergedSub;
