@@ -299,18 +299,19 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       const existing = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
       localStorage.setItem('demo_submissions', JSON.stringify([newSubmission, ...existing]))
       
-      // Save to Firebase (Non-blocking, fire-and-forget so UI doesn't hang)
-      setDoc(doc(db, "submissions", newSubmission.id), newSubmission).catch(fbErr => {
-        console.error("Firebase submission error", fbErr);
-        if (fbErr.code === 'permission-denied') {
-          alert("Firebase Warning: Could not save to cloud due to missing Firestore permissions. Please update your Firebase Rules to allow unauthenticated writes to 'submissions'.");
-        }
-      });
+      // Save to Firebase safely with a strict 3-second timeout to prevent infinite loading
+      try {
+        const savePromise = setDoc(doc(db, "submissions", newSubmission.id), newSubmission);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Firebase upload timed out")), 3000));
+        await Promise.race([savePromise, timeoutPromise]);
+      } catch (fbErr) {
+        console.warn("Firebase save warning (saved locally instead):", fbErr);
+      }
 
-      // Clear the active session so they can't simply refresh the page to try again
+      // Clear the active session
       localStorage.removeItem('demo_active_student_session')
       
-      // Navigate directly using window.location.href to guarantee a reliable redirect
+      // Navigate directly
       window.location.href = `/student/results/${newSubmission.id}`
     } catch (err) {
       console.error(err)
