@@ -21,14 +21,26 @@ export async function POST(request: Request) {
     const html = await res.text()
 
     // 2. Extract the FB_PUBLIC_LOAD_DATA_ array
-    // This is where Google stores all the form data in the HTML
-    const match = html.match(/var FB_PUBLIC_LOAD_DATA_\s*=\s*([\s\S]*?)<\/script>/)
-    if (!match || !match[1]) {
-      return NextResponse.json({ error: 'Could not parse form data. It may be restricted or unsupported.' }, { status: 400 })
+    const startStr = 'var FB_PUBLIC_LOAD_DATA_ = '
+    const startIndex = html.indexOf(startStr)
+    
+    if (startIndex === -1) {
+      return NextResponse.json({ error: 'Could not find form data. Please ensure the form is fully public.' }, { status: 400 })
     }
 
-    let jsonStr = match[1].trim()
-    if (jsonStr.endsWith(';')) {
+    let jsonStr = html.substring(startIndex + startStr.length)
+    
+    // Cut off at the end of the script tag
+    const endIndex = jsonStr.indexOf('</script>')
+    if (endIndex !== -1) {
+      jsonStr = jsonStr.substring(0, endIndex).trim()
+    }
+
+    // Isolate the array by finding the last closing bracket and semicolon
+    const lastBracket = jsonStr.lastIndexOf('];')
+    if (lastBracket !== -1) {
+      jsonStr = jsonStr.substring(0, lastBracket + 1)
+    } else if (jsonStr.endsWith(';')) {
       jsonStr = jsonStr.slice(0, -1)
     }
 

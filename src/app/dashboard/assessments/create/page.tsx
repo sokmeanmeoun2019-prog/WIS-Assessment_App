@@ -953,6 +953,12 @@ export default function CreateAssessment() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {importError && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start text-red-700 text-sm mb-4">
+                      <AlertCircle className="w-5 h-5 mr-3 shrink-0" />
+                      <p>{importError}</p>
+                    </div>
+                  )}
                   <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
                     <h3 className="font-bold text-blue-800 flex items-center mb-2">
                       <Lightbulb className="w-5 h-5 mr-2" /> Smart Text Importer
