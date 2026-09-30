@@ -22,12 +22,17 @@ export async function POST(request: Request) {
 
     // 2. Extract the FB_PUBLIC_LOAD_DATA_ array
     // This is where Google stores all the form data in the HTML
-    const match = html.match(/var FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);\s*<\/script>/)
+    const match = html.match(/var FB_PUBLIC_LOAD_DATA_\s*=\s*([\s\S]*?)<\/script>/)
     if (!match || !match[1]) {
       return NextResponse.json({ error: 'Could not parse form data. It may be restricted or unsupported.' }, { status: 400 })
     }
 
-    const data = JSON.parse(match[1])
+    let jsonStr = match[1].trim()
+    if (jsonStr.endsWith(';')) {
+      jsonStr = jsonStr.slice(0, -1)
+    }
+
+    const data = JSON.parse(jsonStr)
     
     // Google Forms data structure is deeply nested and obfuscated, but predictable.
     // data[1][1] = form title
