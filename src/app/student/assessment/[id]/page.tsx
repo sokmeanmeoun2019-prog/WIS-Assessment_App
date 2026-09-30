@@ -316,25 +316,21 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       const existing = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
       localStorage.setItem('demo_submissions', JSON.stringify([newSubmission, ...existing]))
       
-      // Save to Firebase safely with a strict 3-second timeout to prevent infinite loading
-      try {
-        const savePromise = setDoc(doc(db, "submissions", newSubmission.id), newSubmission);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Firebase upload timed out")), 3000));
-        await Promise.race([savePromise, timeoutPromise]);
-      } catch (fbErr) {
+      // FIRE AND FORGET: Save to Firebase in the background so the UI doesn't freeze.
+      // Because we use Next.js router.push() below, the page doesn't unload and this will safely finish in the background!
+      setDoc(doc(db, "submissions", newSubmission.id), newSubmission).catch(fbErr => {
         console.warn("Firebase save warning (saved locally instead):", fbErr);
-      }
+      });
 
       // Clear the active session
       localStorage.removeItem('demo_active_student_session')
       
-      // Navigate directly
-      window.location.href = `/student/results/${newSubmission.id}`
+      // Navigate immediately using Next.js router (keeps background requests alive)
+      router.push(`/student/results/${newSubmission.id}`)
     } catch (err) {
       console.error(err)
-      // If something fails, at least let them see an error or navigate back
       alert("Something went wrong saving your submission.")
-      window.location.href = '/student/join'
+      router.push('/student/join')
     }
   }
 

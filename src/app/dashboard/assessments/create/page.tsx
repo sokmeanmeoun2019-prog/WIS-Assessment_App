@@ -1,7 +1,7 @@
 "use client"
 import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle, Image as ImageIcon, Loader2, Lightbulb } from 'lucide-react'
 import MathEditor from '@/components/MathEditor'
 import { db, auth } from '@/lib/firebase'
 import { doc, setDoc } from 'firebase/firestore'
