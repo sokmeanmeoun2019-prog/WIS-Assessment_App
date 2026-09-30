@@ -7,8 +7,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid Google Form URL.' }, { status: 400 })
     }
 
+    let fetchUrl = url
+    if (fetchUrl.includes('/edit')) {
+      fetchUrl = fetchUrl.replace(/\/edit.*$/, '/viewform')
+    }
+
     // 1. Fetch the form HTML from the server to bypass CORS
-    const res = await fetch(url)
+    const res = await fetch(fetchUrl)
     if (!res.ok) {
       return NextResponse.json({ error: 'Failed to access form. It may be restricted.' }, { status: 403 })
     }

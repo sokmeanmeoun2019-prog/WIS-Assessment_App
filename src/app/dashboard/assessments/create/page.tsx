@@ -324,7 +324,7 @@ export default function CreateAssessment() {
       }
       
     } catch (e: any) {
-      setImportError(e.message + " If the form is private or restricted, we cannot automatically read it. Please use the Smart Text Importer below.")
+      setImportError("We couldn't automatically read your form. Please ensure the form is public and NOT restricted to your school's Google Workspace organization. If you cannot make it public, please use the Smart Text Importer below.")
       setShowManualImport(true)
     }
   }
