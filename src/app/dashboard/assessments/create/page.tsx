@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle, Image as ImageIcon, Loader2 } from 'lucide-react'
 import MathEditor from '@/components/MathEditor'
-import { db, auth, storage } from '@/lib/firebase'
+import { db, auth } from '@/lib/firebase'
 import { doc, setDoc } from 'firebase/firestore'
 
 type QuestionType = 'MCQ' | 'SHORT_ANSWER' | 'PHYSICS_CALCULATION' | 'FILE_UPLOAD' | 'MATCHING' | 'FILL_IN_BLANK' | 'SECTION_BREAK'
@@ -140,22 +140,50 @@ export default function CreateAssessment() {
   const [hoveredDragId, setHoveredDragId] = useState<string | null>(null)
   const [uploadingImageId, setUploadingImageId] = useState<string | null>(null)
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionId: string) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, questionId: string) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingImageId(questionId)
-    try {
-      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
-      const fileRef = ref(storage, `questions/${questionId}_${Date.now()}_${file.name}`)
-      await uploadBytes(fileRef, file)
-      const url = await getDownloadURL(fileRef)
-      updateQuestion(questionId, 'imageUrl', url)
-    } catch (err) {
-      console.error("Image upload failed:", err)
-      alert("Failed to upload image. Please try again.")
-    } finally {
-      setUploadingImageId(null)
+    
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        const max = 800
+        
+        if (width > height) {
+          if (width > max) {
+            height = Math.round(height *= max / width)
+            width = max
+          }
+        } else {
+          if (height > max) {
+            width = Math.round(width *= max / height)
+            height = max
+          }
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height)
+          // Compress to JPEG to save space in Firestore (0.7 quality)
+          const base64Url = canvas.toDataURL('image/jpeg', 0.7)
+          updateQuestion(questionId, 'imageUrl', base64Url)
+        }
+        setUploadingImageId(null)
+      }
+      img.onerror = () => {
+        alert("Failed to load image.")
+        setUploadingImageId(null)
+      }
+      img.src = event.target?.result as string
     }
+    reader.readAsDataURL(file)
   }
 
   const handleDrop = (dropIndex: number) => {
