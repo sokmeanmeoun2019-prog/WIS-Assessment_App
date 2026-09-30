@@ -46,11 +46,33 @@ export async function POST(request: Request) {
 
     const data = JSON.parse(jsonStr)
     
-    // Google Forms data structure is deeply nested and obfuscated, but predictable.
-    // data[1][1] = form title
-    // data[1][8] = array of form items (questions, sections, images, etc.)
-    const formTitle = data[1][1] || 'Imported Assessment'
-    const formItems = data[1][8] || []
+    // Google Forms data structure is deeply nested and obfuscated, and indices can change.
+    // Dynamically find the title and items array.
+    let formTitle = 'Imported Assessment'
+    let formItems: any[] = []
+
+    if (Array.isArray(data) && Array.isArray(data[1])) {
+      // Find title (usually the first string in data[1])
+      const foundTitle = data[1].find((el: any) => typeof el === 'string' && el.length > 0)
+      if (foundTitle) formTitle = foundTitle
+
+      // Find items array
+      // A form item typically looks like [id, "title", null, type, ...]
+      for (const el of data[1]) {
+        if (Array.isArray(el) && el.length > 0) {
+          const isItemList = el.some((item: any) => 
+            Array.isArray(item) && 
+            typeof item[0] === 'number' && 
+            typeof item[1] === 'string' && 
+            typeof item[3] === 'number'
+          )
+          if (isItemList) {
+            formItems = el
+            break
+          }
+        }
+      }
+    }
     
     const questions = []
     
