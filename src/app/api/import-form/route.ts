@@ -3,12 +3,12 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const { url } = await request.json()
-    if (!url || !url.includes('docs.google.com/forms')) {
-      return NextResponse.json({ error: 'Invalid Google Form URL.' }, { status: 400 })
+    if (!url || (!url.includes('docs.google.com/forms') && !url.includes('forms.gle'))) {
+      return NextResponse.json({ error: 'Invalid Google Form URL. Must be docs.google.com/forms or forms.gle' }, { status: 400 })
     }
 
     let fetchUrl = url
-    if (fetchUrl.includes('/edit')) {
+    if (fetchUrl.includes('docs.google.com/forms') && fetchUrl.includes('/edit')) {
       fetchUrl = fetchUrl.replace(/\/edit.*$/, '/viewform')
     }
 
