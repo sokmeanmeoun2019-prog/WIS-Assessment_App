@@ -291,6 +291,109 @@ export default function CreateAssessment() {
     }, 300)
   }
 
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importUrl, setImportUrl] = useState('')
+  const [importError, setImportError] = useState('')
+  const [showManualImport, setShowManualImport] = useState(false)
+  const [manualText, setManualText] = useState('')
+
+  const handleImportSubmit = async () => {
+    setImportError('')
+    if (!importUrl) return
+    try {
+      const res = await fetch('/api/import-form', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: importUrl })
+      })
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to import form')
+      }
+      
+      if (data.questions && data.questions.length > 0) {
+        if (data.title) setTitle(data.title)
+        setQuestions([...questions, ...data.questions])
+        setShowImportModal(false)
+        setShowManualImport(false)
+        setImportUrl('')
+        alert(`Successfully imported ${data.questions.length} questions! Note: Google Forms does not publicly expose correct answers or point values for security reasons. Please set the correct answers and points manually before publishing.`)
+      } else {
+        throw new Error("No questions found in this form.")
+      }
+      
+    } catch (e: any) {
+      setImportError(e.message + " If the form is private or restricted, we cannot automatically read it. Please use the Smart Text Importer below.")
+      setShowManualImport(true)
+    }
+  }
+
+  const handleManualImport = () => {
+    if (!manualText.trim()) return;
+    
+    const blocks = manualText.split(/\n\s*\n/)
+    const parsedQuestions: Question[] = []
+    
+    blocks.forEach((block) => {
+      if (!block.trim()) return
+      const lines = block.split('\n').map(l => l.trim()).filter(l => l)
+      
+      // Look for section break marker
+      if (lines[0].toLowerCase().includes('section') && lines.length === 1) {
+        parsedQuestions.push({
+          id: 'sec_' + Math.random().toString(36).substring(7),
+          type: 'SECTION_BREAK',
+          content: lines[0].replace(/^\d+[\.\)]\s*/, ''),
+          points: 0,
+          options: [],
+          correctAnswer: ''
+        })
+        return;
+      }
+
+      let qText = lines[0].replace(/^\d+[\.\)]\s*/, '')
+      let type: QuestionType = 'SHORT_ANSWER'
+      let options: Option[] = []
+      let correct = ''
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i]
+        if (line.match(/^[a-eA-E][\.\)]\s+/) || line.match(/^[○\-*]\s+/)) {
+          const optText = line.replace(/^[a-eA-E][\.\)]\s+/, '').replace(/^[○\-*]\s+/, '')
+          const optId = 'opt_' + Math.random().toString(36).substring(7)
+          options.push({ id: optId, text: optText })
+          type = 'MCQ'
+        } else if (line.toLowerCase().startsWith('answer:')) {
+          const ansStr = line.split(':')[1].trim().toUpperCase()
+          const charCode = ansStr.charCodeAt(0)
+          if (charCode >= 65 && charCode <= 69) { 
+            const index = charCode - 65
+            if (options[index]) correct = options[index].id
+          }
+        }
+      }
+      
+      parsedQuestions.push({
+        id: 'q_' + Math.random().toString(36).substring(7),
+        type: type,
+        content: qText,
+        points: 1,
+        options: options.length > 0 ? options : [{id: 'o1', text: 'Option 1'}, {id: 'o2', text: 'Option 2'}],
+        correctAnswer: correct || (options.length > 0 ? options[0].id : ''),
+        isRequired: true
+      })
+    })
+
+    if (parsedQuestions.length > 0) {
+      setQuestions([...questions, ...parsedQuestions])
+      setShowImportModal(false)
+      setShowManualImport(false)
+      setManualText('')
+      setImportUrl('')
+    }
+  }
+
   return (
     <div className="max-w-5xl mx-auto pb-24">
       <div className="flex items-center justify-between mb-8">
@@ -309,6 +412,13 @@ export default function CreateAssessment() {
           </div>
         </div>
         <div className="flex space-x-3">
+          <button 
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-2 bg-green-50 border border-green-200 text-green-700 rounded-lg hover:bg-green-100 font-medium flex items-center shadow-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Import from Google Form
+          </button>
           <button 
             onClick={() => handleSave('DRAFT')}
             disabled={loading}
@@ -800,6 +910,83 @@ export default function CreateAssessment() {
           </button>
         </div>
       </div>
+
+    {showImportModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mr-3 text-green-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Import from Google Form
+              </h2>
+              <button onClick={() => { setShowImportModal(false); setShowManualImport(false); }} className="text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {!showManualImport ? (
+                <div className="space-y-6">
+                  <p className="text-slate-600">Paste your Google Form URL below to automatically import questions.</p>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Google Form URL</label>
+                    <input 
+                      type="url" 
+                      value={importUrl}
+                      onChange={e => setImportUrl(e.target.value)}
+                      placeholder="https://docs.google.com/forms/d/e/1FAIpQL..." 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500 transition-all"
+                    />
+                  </div>
+                  
+                  {importError && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start text-red-700 text-sm">
+                      <AlertCircle className="w-5 h-5 mr-3 shrink-0" />
+                      <p>{importError}</p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button onClick={() => setShowImportModal(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-50 rounded-lg">Cancel</button>
+                    <button onClick={handleImportSubmit} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition-colors">Attempt Import</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                    <h3 className="font-bold text-blue-800 flex items-center mb-2">
+                      <Lightbulb className="w-5 h-5 mr-2" /> Smart Text Importer
+                    </h3>
+                    <p className="text-sm text-blue-700 mb-2">
+                      Copy the text from your Google Form (or any document) and paste it below. Separate questions with an empty line.
+                    </p>
+                    <div className="text-xs text-blue-600 bg-blue-100/50 p-3 rounded-lg font-mono">
+                      1. What is the unit of Force?<br/>
+                      A) Newton<br/>
+                      B) Joule<br/>
+                      Answer: A<br/>
+                      <br/>
+                      2. Explain Newton's laws. (Short Answer)
+                    </div>
+                  </div>
+                  
+                  <textarea 
+                    value={manualText}
+                    onChange={e => setManualText(e.target.value)}
+                    placeholder="Paste your questions here..."
+                    className="w-full h-64 p-4 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm resize-none"
+                  />
+                  
+                  <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button onClick={() => setShowImportModal(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-50 rounded-lg">Cancel</button>
+                    <button onClick={handleManualImport} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors">Import Questions</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
