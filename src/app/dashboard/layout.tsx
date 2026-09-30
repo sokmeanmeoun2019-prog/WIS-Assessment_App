@@ -63,17 +63,15 @@ export default function DashboardLayout({
         <div className="absolute top-0 left-0 w-full h-40 bg-blue-600/20 blur-[50px] -z-10" />
         <div className="absolute bottom-0 right-0 w-full h-40 bg-indigo-600/20 blur-[50px] -z-10" />
 
-        <div className="p-6 border-b border-white/10 relative flex justify-between items-start">
-          <div>
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-2xl flex items-center justify-center mb-5 shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
-              <Lightbulb className="w-7 h-7 text-white" strokeWidth={2.5} />
-            </div>
-            <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 tracking-tight leading-tight">
-              WIS<br/>Assessments
-            </h2>
+        <div className="p-6 border-b border-white/10 relative flex flex-col items-center text-center">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
+            <Lightbulb className="w-7 h-7 text-white" strokeWidth={2.5} />
           </div>
+          <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 tracking-tight leading-tight">
+            WIS<br/>Assessments
+          </h2>
           <button 
-            className="lg:hidden text-slate-400 hover:text-white p-2"
+            className="lg:hidden text-slate-400 hover:text-white p-2 absolute top-4 right-4"
             onClick={() => setIsMobileMenuOpen(false)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

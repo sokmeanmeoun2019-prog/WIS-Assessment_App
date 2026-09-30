@@ -18,11 +18,11 @@ export default function Home() {
       <div className="max-w-5xl w-full px-6 py-20 flex flex-col items-center text-center z-10">
         
         {/* Giant Centered Logo */}
-        <div className="flex items-center justify-center mb-16">
-          <div className="w-24 h-24 sm:w-32 sm:h-32 bg-blue-500 rounded-[2rem] flex items-center justify-center mr-6 sm:mr-8 shadow-[0_0_50px_-10px_rgba(59,130,246,0.6)] relative z-10">
+        <div className="flex flex-col items-center justify-center mb-16 text-center">
+          <div className="w-24 h-24 sm:w-32 sm:h-32 bg-blue-500 rounded-[2rem] flex items-center justify-center mb-6 sm:mb-8 shadow-[0_0_50px_-10px_rgba(59,130,246,0.6)] relative z-10">
             <Lightbulb className="w-12 h-12 sm:w-16 sm:h-16 text-white" strokeWidth={2.5} />
           </div>
-          <div className="text-5xl sm:text-7xl font-extrabold text-white tracking-tight leading-[1.1] text-left drop-shadow-lg">
+          <div className="text-5xl sm:text-7xl font-extrabold text-white tracking-tight leading-[1.1] drop-shadow-lg">
             WIS<br/>Assessments
           </div>
         </div>
