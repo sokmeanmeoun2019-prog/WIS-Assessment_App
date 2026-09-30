@@ -69,7 +69,7 @@ export default function DashboardLayout({
               <Lightbulb className="w-7 h-7 text-white" strokeWidth={2.5} />
             </div>
             <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 tracking-tight leading-tight">
-              Sokmean<br/>Academy
+              WIS<br/>Assessments
             </h2>
           </div>
           <button 
