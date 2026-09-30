@@ -299,7 +299,7 @@ export default function AssessmentsPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Table Header */}
-        <div className="grid grid-cols-6 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-600">
+        <div className="hidden md:grid grid-cols-6 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-600">
           <div className="col-span-2">Title</div>
           <div>Grade Level</div>
           <div>Type</div>
@@ -313,39 +313,42 @@ export default function AssessmentsPage() {
             <div className="p-8 text-center text-slate-500">No assessments found. Create one!</div>
           ) : (
             assessments.map((a) => (
-              <div key={a.id} className="grid grid-cols-6 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
-                <div className="col-span-2 flex items-center">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 border ${
+              <div key={a.id} className="flex flex-col md:grid md:grid-cols-6 gap-3 md:gap-4 p-5 md:p-4 md:items-center hover:bg-slate-50 transition-colors">
+                <div className="md:col-span-2 flex items-start md:items-center mb-2 md:mb-0">
+                  <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center mr-3 border ${
                     a.type === 'HOMEWORK' ? 'bg-cyan-100 text-cyan-600 border-cyan-200' : 'bg-orange-100 text-orange-600 border-orange-200'
                   }`}>
                     <BookOpen className="w-5 h-5" />
                   </div>
-                  <div>
-                    <p className="font-bold text-slate-800">{a.title}</p>
-                    <p className="text-xs text-slate-500">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-800 break-words leading-tight">{a.title}</p>
+                    <p className="text-xs text-slate-500 mt-1">
                       Created {new Date(a.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
                 
-                <div className="text-sm font-medium text-slate-700">
-                  {a.grade}
+                <div className="flex flex-wrap md:contents gap-2 md:gap-0 mt-1 md:mt-0">
+                  <div className="flex items-center text-sm font-medium text-slate-700 bg-slate-100 md:bg-transparent px-2.5 py-1 md:px-0 md:py-0 rounded-lg w-fit">
+                    <span className="md:hidden text-xs text-slate-500 mr-2 font-bold uppercase">Grade:</span>
+                    {a.grade}
+                  </div>
+
+                  <div>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                      a.type === 'HOMEWORK' ? 'bg-cyan-100 text-cyan-700' : 'bg-orange-100 text-orange-700'
+                    }`}>
+                      {a.type}
+                    </span>
+                  </div>
+
+                  <div className="text-sm text-slate-500 flex items-center bg-slate-100 md:bg-transparent px-2.5 py-1 md:px-0 md:py-0 rounded-lg w-fit">
+                    <Clock className="w-4 h-4 mr-1.5" />
+                    {getDisplayTime(a) === 'None' ? 'None' : `${getDisplayTime(a)} mins`}
+                  </div>
                 </div>
 
-                <div>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                    a.type === 'HOMEWORK' ? 'bg-cyan-100 text-cyan-700' : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {a.type}
-                  </span>
-                </div>
-
-                <div className="text-sm text-slate-500 flex items-center">
-                  <Clock className="w-4 h-4 mr-1.5" />
-                  {getDisplayTime(a) === 'None' ? 'None' : `${getDisplayTime(a)} mins`}
-                </div>
-
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-end md:justify-start space-x-3 md:space-x-2 mt-3 md:mt-0 pt-3 md:pt-0 border-t border-slate-100 md:border-transparent">
                   <button 
                     onClick={() => handleQuickShare(a.id)}
                     className="text-slate-400 hover:text-green-600 p-1 transition-colors" 

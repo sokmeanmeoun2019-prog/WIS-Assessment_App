@@ -471,7 +471,7 @@ export default function SubmissionsPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Table Header */}
-        <div className="grid grid-cols-5 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-600">
+        <div className="hidden md:grid grid-cols-5 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-600">
           <div className="col-span-2">Assessment</div>
           <div>Student</div>
           <div>Status</div>
@@ -487,43 +487,44 @@ export default function SubmissionsPage() {
               <div key={sub.id} className="flex flex-col">
                 {/* Row */}
                 <div 
-                  className={`grid grid-cols-5 gap-4 p-4 items-center transition-all duration-300 cursor-pointer border-l-4 ${expandedId === sub.id ? 'bg-indigo-50/50 border-indigo-500' : 'hover:bg-slate-50 border-transparent hover:border-slate-300'}`}
+                  className={`flex flex-col md:grid md:grid-cols-5 gap-3 md:gap-4 p-5 md:p-4 md:items-center transition-all duration-300 cursor-pointer border-l-4 ${expandedId === sub.id ? 'bg-indigo-50/50 border-indigo-500' : 'hover:bg-slate-50 border-transparent hover:border-slate-300'}`}
                   onClick={() => setExpandedId(expandedId === sub.id ? null : sub.id)}
                 >
-                  <div className="col-span-2 flex items-center">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-4 shadow-sm transition-colors duration-300 ${expandedId === sub.id ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-gradient-to-br from-indigo-100 to-blue-100 text-indigo-600 border border-indigo-200'}`}>
+                  <div className="md:col-span-2 flex items-start md:items-center mb-2 md:mb-0">
+                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center mr-4 shadow-sm transition-colors duration-300 ${expandedId === sub.id ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-gradient-to-br from-indigo-100 to-blue-100 text-indigo-600 border border-indigo-200'}`}>
                       <FileText className="w-5 h-5" />
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-800">{sub.assessmentTitle}</p>
-                      <p className="text-xs text-slate-500">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 break-words leading-tight">{sub.assessmentTitle}</p>
+                      <p className="text-xs text-slate-500 mt-1">
                         Submitted {new Date(sub.submittedAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex flex-col justify-center text-sm font-medium text-slate-700">
-                    <div className="flex items-center">
+                  <div className="flex items-center md:flex-col md:items-start md:justify-center text-sm font-medium text-slate-700 bg-slate-50 md:bg-transparent p-2 md:p-0 rounded-lg">
+                    <div className="flex items-center w-1/2 md:w-auto">
                       <User className="w-4 h-4 mr-2 text-slate-400" />
-                      {sub.studentName}
+                      <span className="truncate">{sub.studentName}</span>
                     </div>
-                    <div className="text-xs text-slate-500 ml-6 mt-0.5">
+                    <div className="text-xs text-slate-500 w-1/2 md:w-auto text-right md:text-left md:ml-6 mt-0.5">
                       {sub.className || sub.studentId || 'Unknown'}
                     </div>
                   </div>
 
-                  <div>
+                  <div className="flex justify-between items-center md:block mt-1 md:mt-0">
+                    <span className="md:hidden text-xs font-bold text-slate-400 uppercase tracking-wider">Status</span>
                     {sub.status === 'Needs Grading' ? (
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">
                         <Clock className="w-3 h-3 mr-1" /> Needs Grading
                       </span>
                     ) : (
-                      <div className="flex flex-col">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 w-fit">
+                      <div className="flex flex-col md:block text-right md:text-left">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 w-fit ml-auto md:ml-0">
                           <CheckCircle className="w-3 h-3 mr-1" /> Graded
                         </span>
                         {sub.score !== undefined && (
-                          <span className="mt-1 text-sm font-black text-indigo-700">
+                          <span className="block mt-1 text-sm font-black text-indigo-700">
                             {sub.pointsEarned !== undefined && sub.pointsPossible !== undefined 
                               ? `Score: ${sub.pointsEarned}/${sub.pointsPossible} (${sub.score}%)`
                               : `Score: ${sub.score}%`}
@@ -533,9 +534,9 @@ export default function SubmissionsPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-indigo-600 font-medium text-sm">
-                    {expandedId === sub.id ? 'Close' : 'Review'}
-                    {expandedId === sub.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                  <div className="flex items-center justify-center md:justify-between text-indigo-600 font-medium text-sm mt-3 md:mt-0 pt-3 md:pt-0 border-t border-slate-100 md:border-t-0">
+                    <span>{expandedId === sub.id ? 'Close Review' : 'Open Review'}</span>
+                    {expandedId === sub.id ? <ChevronUp className="w-5 h-5 ml-1" /> : <ChevronDown className="w-5 h-5 ml-1" />}
                   </div>
                 </div>
 
