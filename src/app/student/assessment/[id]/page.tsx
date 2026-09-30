@@ -280,6 +280,23 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       return;
     }
 
+    // Check required questions
+    if (assessment && assessment.questions) {
+      const missingRequired = assessment.questions.find((q: any) => {
+        if (q.type === 'SECTION_BREAK' || !q.isRequired) return false;
+        const ans = answers[q.id];
+        if (ans === undefined || ans === null || ans === '') return true;
+        if (Array.isArray(ans) && ans.length === 0) return true;
+        if (typeof ans === 'object' && Object.keys(ans).length === 0) return true;
+        return false;
+      });
+
+      if (missingRequired) {
+        alert("Please answer all required questions before submitting.");
+        return;
+      }
+    }
+
     setSubmitted('saving')
     
     try {
@@ -536,10 +553,22 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
                 </span>
               </div>
             )}
-            <div 
-              className="prose max-w-none text-slate-800 mb-8 text-lg"
-              dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) }}
-            />
+            
+            {q.imageUrl && (
+              <div className="mb-6">
+                <img src={q.imageUrl} alt="Question figure" className="max-w-full h-auto max-h-96 rounded-lg border border-slate-200 shadow-sm" />
+              </div>
+            )}
+            
+            <div className="flex items-start mb-8">
+              <div 
+                className="prose max-w-none text-slate-800 text-lg flex-1"
+                dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) }}
+              />
+              {q.isRequired && (
+                <span className="text-red-500 font-bold text-2xl ml-2 shrink-0 leading-none" title="Required">*</span>
+              )}
+            </div>
 
             {/* Input area based on type */}
             {q.type === 'MCQ' && q.options && (() => {

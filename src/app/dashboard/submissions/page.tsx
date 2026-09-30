@@ -586,6 +586,11 @@ export default function SubmissionsPage() {
                           return (
                             <div key={q.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                               <h4 className="font-bold text-slate-800 mb-2">Question {currentQNum}</h4>
+                              {q.imageUrl && (
+                                <div className="mb-3">
+                                  <img src={q.imageUrl} alt="Question figure" className="max-w-full h-auto max-h-48 rounded-lg border border-slate-200" />
+                                </div>
+                              )}
                               <div className="prose max-w-none text-slate-700 text-sm mb-4" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) || '<em>No question text</em>' }} />
                               
                               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-800">

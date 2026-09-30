@@ -1,9 +1,9 @@
 "use client"
 import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, Save, Send, Settings2, GripVertical, CheckCircle2, AlertCircle, Image as ImageIcon, Loader2 } from 'lucide-react'
 import MathEditor from '@/components/MathEditor'
-import { db, auth } from '@/lib/firebase'
+import { db, auth, storage } from '@/lib/firebase'
 import { doc, setDoc } from 'firebase/firestore'
 
 type QuestionType = 'MCQ' | 'SHORT_ANSWER' | 'PHYSICS_CALCULATION' | 'FILE_UPLOAD' | 'MATCHING' | 'FILL_IN_BLANK' | 'SECTION_BREAK'
@@ -27,6 +27,8 @@ interface Question {
   options: Option[]
   correctAnswer: string // ID of option or text
   pairs?: MatchingPair[]
+  isRequired?: boolean
+  imageUrl?: string
 }
 
 export default function CreateAssessment() {
@@ -136,6 +138,25 @@ export default function CreateAssessment() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [hoveredDragId, setHoveredDragId] = useState<string | null>(null)
+  const [uploadingImageId, setUploadingImageId] = useState<string | null>(null)
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionId: string) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingImageId(questionId)
+    try {
+      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
+      const fileRef = ref(storage, `questions/${questionId}_${Date.now()}_${file.name}`)
+      await uploadBytes(fileRef, file)
+      const url = await getDownloadURL(fileRef)
+      updateQuestion(questionId, 'imageUrl', url)
+    } catch (err) {
+      console.error("Image upload failed:", err)
+      alert("Failed to upload image. Please try again.")
+    } finally {
+      setUploadingImageId(null)
+    }
+  }
 
   const handleDrop = (dropIndex: number) => {
     if (draggedIndex === null || draggedIndex === dropIndex) return
@@ -503,6 +524,17 @@ export default function CreateAssessment() {
                   </div>
 
             <div className="pl-4">
+              {q.imageUrl && (
+                <div className="mb-4 relative w-fit">
+                  <img src={q.imageUrl} alt="Question figure" className="max-w-full h-auto max-h-64 rounded-lg border border-slate-200" />
+                  <button 
+                    onClick={() => updateQuestion(q.id, 'imageUrl', '')}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
               <MathEditor 
                 value={q.content} 
                 onChange={(val) => updateQuestion(q.id, 'content', val)} 
@@ -665,16 +697,47 @@ export default function CreateAssessment() {
                 )}
               </div>
               
-              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium text-slate-500">Points:</span>
-                  <input 
-                    type="number" 
-                    value={q.points} 
-                    onChange={(e) => updateQuestion(q.id, 'points', Number(e.target.value))}
-                    className="w-16 px-2 py-1 border border-slate-300 rounded outline-none text-center" 
-                    min="1"
-                  />
+              <div className="flex flex-wrap items-center justify-between mt-6 pt-4 border-t border-slate-100 gap-4">
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-slate-500">Points:</span>
+                    <input 
+                      type="number" 
+                      value={q.points} 
+                      onChange={(e) => updateQuestion(q.id, 'points', Number(e.target.value))}
+                      className="w-16 px-2 py-1 border border-slate-300 rounded outline-none text-center" 
+                      min="1"
+                    />
+                  </div>
+                  
+                  <div className="h-4 w-px bg-slate-300"></div>
+
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <div className="relative">
+                      <input type="checkbox" className="sr-only" checked={q.isRequired || false} onChange={(e) => updateQuestion(q.id, 'isRequired', e.target.checked)} />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${q.isRequired ? 'bg-indigo-500' : 'bg-slate-300'}`}></div>
+                      <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${q.isRequired ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                    <span className="text-sm font-medium text-slate-600">Required</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg cursor-pointer transition-colors">
+                    {uploadingImageId === q.id ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 mr-2" />
+                    )}
+                    {q.imageUrl ? 'Change Image' : 'Add Image'}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => handleImageUpload(e, q.id)}
+                      disabled={uploadingImageId === q.id}
+                    />
+                  </label>
                 </div>
               </div>
             </div>
