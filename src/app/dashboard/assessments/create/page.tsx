@@ -210,7 +210,7 @@ export default function CreateAssessment() {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        const max = 300 // logos don't need to be huge
+        const max = 600 // increased for better retina resolution
         
         if (width > height) {
           if (width > max) {
@@ -622,7 +622,7 @@ export default function CreateAssessment() {
               <img 
                 src={headerState.logoUrl} 
                 alt="School Logo" 
-                className="w-28 h-28 object-contain mb-1 bg-white"
+                className="h-36 w-auto max-w-[220px] object-contain mb-1 bg-white"
               />
             </div>
 

@@ -508,7 +508,7 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
               <img 
                 src={headerFormat.logoUrl || "https://static.wixstatic.com/media/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png/v1/fill/w_200,h_200,al_c/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png"} 
                 alt="School Logo" 
-                className="w-28 h-28 object-contain mb-1 bg-white"
+                className="h-36 w-auto max-w-[220px] object-contain mb-1 bg-white"
               />
             </div>
 
