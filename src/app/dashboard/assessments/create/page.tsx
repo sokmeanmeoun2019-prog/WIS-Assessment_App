@@ -624,14 +624,6 @@ export default function CreateAssessment() {
                 alt="School Logo" 
                 className="w-28 h-28 object-contain mb-1 bg-white"
               />
-              <input 
-                type="text" 
-                className="text-center text-[11px] font-bold text-black tracking-tight leading-tight outline-none bg-transparent w-32 border-b border-dashed border-slate-300 hover:border-slate-400 focus:border-black placeholder:font-normal placeholder:italic placeholder:text-slate-400"
-                value={headerState.schoolNameKh !== undefined ? headerState.schoolNameKh : ''}
-                onChange={e => setHeaderState({...headerState, schoolNameKh: e.target.value})}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="School Name"
-              />
             </div>
 
             {/* Right Column Total Score */}
