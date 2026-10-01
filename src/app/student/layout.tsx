@@ -55,7 +55,7 @@ export default function StudentLayout({
           <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center mb-3 shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
           </div>
-          <span className="text-2xl font-extrabold text-white tracking-tight leading-tight">WIS<br/>Assessments</span>
+          <span className="text-2xl font-extrabold text-white tracking-tight leading-tight">MyAssessments</span>
           <button 
             className="lg:hidden text-slate-400 hover:text-white p-2 absolute top-4 right-4"
             onClick={() => setIsMobileMenuOpen(false)}
