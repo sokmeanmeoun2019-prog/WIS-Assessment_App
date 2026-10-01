@@ -261,13 +261,27 @@ export default function CreateAssessment() {
   // Auto-save logic
   React.useEffect(() => {
     if (editId && !isLoadedFromStorage) return; // CRITICAL: wait until existing data is loaded!
-    if (!title.trim() && questions.length === 0) return; // Don't auto-save empty new assessments
+    
+    // Don't auto-save if they literally haven't changed the default starting state at all
+    if (!editId) {
+      const isCompletelyEmpty = 
+        !title.trim() && 
+        !instructions.trim() &&
+        questions.length === 1 && 
+        questions[0].content === 'What is the unit of Force?';
+        
+      if (isCompletelyEmpty) return;
+    }
     
     try {
       const existing = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
       const targetId = editId || draftId;
       
+      const existingIndex = existing.findIndex((a: any) => a.id === targetId)
+      const existingDoc = existingIndex >= 0 ? existing[existingIndex] : {};
+
       const draftData = {
+        ...existingDoc,
         id: targetId,
         title: title || 'Untitled Assessment',
         instructions,
@@ -277,6 +291,7 @@ export default function CreateAssessment() {
         headerFormat: headerState,
         showHeader: showHeader,
         questions,
+        createdAt: existingDoc.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         status: 'DRAFT'
       }

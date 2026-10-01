@@ -18,6 +18,21 @@ export default function AssessmentsPage() {
       try {
         let stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         
+        // Auto-purge ghost drafts created by the auto-save bug
+        const originalLength = stored.length;
+        stored = stored.filter((a: any) => {
+          if (a.title === 'Untitled Assessment' && a.status === 'DRAFT') {
+            const isDefault = a.questions?.length === 1 && a.questions[0].content === 'What is the unit of Force?';
+            const isInvalidDate = !a.createdAt;
+            if (isDefault || isInvalidDate) return false; // Delete it
+          }
+          return true;
+        });
+        
+        if (stored.length !== originalLength) {
+          localStorage.setItem('demo_assessments', JSON.stringify(stored));
+        }
+
         // Optimistic UI: Filter stored
         if (auth.currentUser?.uid) {
           stored = stored.filter((a: any) => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId)
