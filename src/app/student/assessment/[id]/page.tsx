@@ -510,7 +510,9 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
                 alt="School Logo" 
                 className="w-28 h-28 object-contain mb-1 bg-white"
               />
-              <div className="text-center text-[11px] font-bold text-black tracking-tight leading-tight">{headerFormat.schoolNameKh || 'សាលាអន្តរជាតិវេស្ទើន'}</div>
+              <div className="text-center text-[11px] font-bold text-black tracking-tight leading-tight">
+                {headerFormat.schoolNameKh !== undefined ? headerFormat.schoolNameKh : 'សាលាអន្តរជាតិវេស្ទើន'}
+              </div>
             </div>
 
             {/* Right Column Total Score */}
