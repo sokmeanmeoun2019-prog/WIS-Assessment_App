@@ -296,7 +296,6 @@ export default function CreateAssessment() {
         status: 'DRAFT'
       }
 
-      const existingIndex = existing.findIndex((a: any) => a.id === targetId)
       if (existingIndex >= 0) {
         existing[existingIndex] = { ...existing[existingIndex], ...draftData }
       } else {
