@@ -67,8 +67,8 @@ export default function DashboardLayout({
           <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
             <Lightbulb className="w-7 h-7 text-white" strokeWidth={2.5} />
           </div>
-          <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 tracking-tight leading-tight">
-            WIS<br/>Assessments
+          <h2 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 tracking-tight leading-tight">
+            MyAssessments
           </h2>
           <button 
             className="lg:hidden text-slate-400 hover:text-white p-2 absolute top-4 right-4"

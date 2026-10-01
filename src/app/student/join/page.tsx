@@ -222,7 +222,7 @@ export default function StudentJoin() {
           <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mr-3 shadow-md">
             <Lightbulb className="w-6 h-6 text-white" strokeWidth={2.5} />
           </div>
-          <span className="text-xl font-extrabold text-slate-800 tracking-tight">WIS Assessments</span>
+          <span className="text-xl font-extrabold text-slate-800 tracking-tight">MyAssessments</span>
         </div>
       </header>
 

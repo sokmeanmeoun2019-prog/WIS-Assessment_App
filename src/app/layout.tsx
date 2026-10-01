@@ -6,8 +6,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Physics Assessment Hub",
-  description: "Modern assessment platform for Physics at WIS Phnom Penh",
+  title: "MyAssessments",
+  description: "Modern assessment platform for teachers",
 };
 
 import { Suspense } from 'react';

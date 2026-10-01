@@ -23,7 +23,7 @@ export default function Home() {
             <Lightbulb className="w-12 h-12 sm:w-16 sm:h-16 text-white" strokeWidth={2.5} />
           </div>
           <div className="text-5xl sm:text-7xl font-extrabold text-white tracking-tight leading-[1.1] drop-shadow-lg">
-            WIS<br/>Assessments
+            MyAssessments
           </div>
         </div>
 
