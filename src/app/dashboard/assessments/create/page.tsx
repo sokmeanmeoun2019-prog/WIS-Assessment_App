@@ -52,8 +52,12 @@ export default function CreateAssessment() {
     note: 'Calculator is NOT allowed during the quiz.',
     campus: 'Stadium, #20, St. 598C, Phnom Penh Thmey, Sen Sok',
     maxScore: '100',
-    quizId: 'Quiz#1A'
+    quizId: 'Quiz#1A',
+    logoUrl: 'https://static.wixstatic.com/media/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png/v1/fill/w_200,h_200,al_c/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png',
+    schoolNameKh: 'សាលាអន្តរជាតិវេស្ទើន'
   })
+
+  const [showHeader, setShowHeader] = useState(true)
 
   // Synchronize grade and timeLimit with the digital settings
   React.useEffect(() => {
@@ -83,6 +87,15 @@ export default function CreateAssessment() {
           setTimeLimit(existing.timeLimitMinutes || 30)
           if (existing.questions && existing.questions.length > 0) {
             setQuestions(existing.questions)
+          }
+          if (existing.headerFormat) {
+            setHeaderState({
+              ...headerState,
+              ...existing.headerFormat
+            })
+          }
+          if (existing.showHeader !== undefined) {
+            setShowHeader(existing.showHeader)
           }
         }
       } catch (err) {
@@ -186,6 +199,48 @@ export default function CreateAssessment() {
     reader.readAsDataURL(file)
   }
 
+  const handleHeaderLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        const max = 300 // logos don't need to be huge
+        
+        if (width > height) {
+          if (width > max) {
+            height = Math.round(height *= max / width)
+            width = max
+          }
+        } else {
+          if (height > max) {
+            width = Math.round(width *= max / height)
+            height = max
+          }
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height)
+          const base64Url = canvas.toDataURL('image/png')
+          setHeaderState(prev => ({ ...prev, logoUrl: base64Url }))
+        }
+      }
+      img.onerror = () => {
+        alert("Failed to load image.")
+      }
+      img.src = event.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleDrop = (dropIndex: number) => {
     if (draggedIndex === null || draggedIndex === dropIndex) return
     const newQuestions = [...questions]
@@ -220,6 +275,7 @@ export default function CreateAssessment() {
         type,
         timeLimitMinutes: timeLimit,
         headerFormat: headerState,
+        showHeader: showHeader,
         questions,
         updatedAt: new Date().toISOString(),
         status: 'DRAFT'
@@ -263,6 +319,7 @@ export default function CreateAssessment() {
       type,
       timeLimitMinutes: timeLimit,
       headerFormat: headerState,
+      showHeader: showHeader,
       questions,
       createdAt: new Date().toISOString(), // This overwrites updatedAt for new
       updatedAt: new Date().toISOString(),
@@ -498,80 +555,117 @@ export default function CreateAssessment() {
       </div>
 
       {/* Official Document Header (Paper Layout) */}
-      <div className="bg-white rounded-xl p-8 shadow-sm border-2 border-slate-300 mb-8 font-serif text-black relative">
-        <div className="absolute top-2 right-4 text-xs text-slate-400 font-sans italic">Official Paper Header Format</div>
-        
-        <div className="flex justify-between items-start mt-4">
+      {showHeader ? (
+        <div className="bg-white rounded-xl p-8 shadow-sm border-2 border-slate-300 mb-8 font-serif text-black relative group/header">
+          <button 
+            onClick={() => setShowHeader(false)} 
+            className="absolute top-2 left-2 text-red-500 hover:text-red-700 p-2 bg-red-50 hover:bg-red-100 rounded-lg transition-colors z-10 opacity-0 group-hover/header:opacity-100" 
+            title="Remove Header"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <div className="absolute top-2 right-4 text-xs text-slate-400 font-sans italic">Official Paper Header Format</div>
           
-          {/* Left Column Fields */}
-          <div className="space-y-3 text-[15px] flex-1 max-w-md">
-            <div className="flex items-end">
-              <span className="font-bold mr-2 whitespace-nowrap">Date:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 placeholder-slate-300" placeholder="dd / mm / yyyy" value={headerState.date} onChange={e => setHeaderState({...headerState, date: e.target.value})} />
-            </div>
+          <div className="flex justify-between items-start mt-4">
             
-            <div className="flex items-end">
-              <span className="font-bold mr-2 whitespace-nowrap">Student's name:</span>
-              <input type="text" disabled className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 text-slate-400" placeholder="Auto-filled by system" />
-            </div>
-            
-            <div className="flex items-end">
-              <span className="font-bold mr-2 whitespace-nowrap">Grade:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black w-32 outline-none bg-transparent text-center" value={headerState.grade} onChange={e => setHeaderState({...headerState, grade: e.target.value})} />
-              <span className="font-bold mx-2 whitespace-nowrap">Subject:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 min-w-0" value={headerState.subject} onChange={e => setHeaderState({...headerState, subject: e.target.value})} />
-            </div>
-            
-            <div className="flex items-end">
-              <span className="font-bold mr-2">Duration:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.duration} onChange={e => setHeaderState({...headerState, duration: e.target.value})} />
-            </div>
-            
-            <div className="flex items-end">
-              <span className="font-bold mr-2">Note:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.note} onChange={e => setHeaderState({...headerState, note: e.target.value})} />
-            </div>
-            
-            <div className="flex items-end">
-              <span className="font-bold mr-2">Campus:</span>
-              <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.campus} onChange={e => setHeaderState({...headerState, campus: e.target.value})} />
-            </div>
-          </div>
-
-          {/* Middle Column Logo Placeholder */}
-          <div className="flex flex-col items-center justify-start px-4">
-            <img 
-              src="https://static.wixstatic.com/media/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png/v1/fill/w_200,h_200,al_c/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png" 
-              alt="Western International School" 
-              className="w-28 h-28 object-contain mb-1"
-            />
-            <div className="text-center text-[11px] font-bold text-black tracking-tight leading-tight">សាលាអន្តរជាតិវេស្ទើន</div>
-          </div>
-
-          {/* Right Column Total Score */}
-          <div className="flex flex-col items-center justify-start w-32 pt-2">
-            <span className="font-bold mb-2">Total Score</span>
-            <div className="w-20 h-20 rounded-full border-2 border-black flex flex-col relative overflow-hidden">
-              <div className="flex-1 border-b-2 border-black"></div>
-              <div className="flex-1 flex items-center justify-center bg-white">
-                <input type="text" className="w-full text-center outline-none bg-transparent font-serif text-lg" value={headerState.maxScore} onChange={e => setHeaderState({...headerState, maxScore: e.target.value})} />
+            {/* Left Column Fields */}
+            <div className="space-y-3 text-[15px] flex-1 max-w-md">
+              <div className="flex items-end">
+                <span className="font-bold mr-2 whitespace-nowrap">Date:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 placeholder-slate-300" placeholder="dd / mm / yyyy" value={headerState.date} onChange={e => setHeaderState({...headerState, date: e.target.value})} />
+              </div>
+              
+              <div className="flex items-end">
+                <span className="font-bold mr-2 whitespace-nowrap">Student's name:</span>
+                <input type="text" disabled className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 text-slate-400" placeholder="Auto-filled by system" />
+              </div>
+              
+              <div className="flex items-end">
+                <span className="font-bold mr-2 whitespace-nowrap">Grade:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black w-32 outline-none bg-transparent text-center" value={headerState.grade} onChange={e => setHeaderState({...headerState, grade: e.target.value})} />
+                <span className="font-bold mx-2 whitespace-nowrap">Subject:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1 min-w-0" value={headerState.subject} onChange={e => setHeaderState({...headerState, subject: e.target.value})} />
+              </div>
+              
+              <div className="flex items-end">
+                <span className="font-bold mr-2">Duration:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.duration} onChange={e => setHeaderState({...headerState, duration: e.target.value})} />
+              </div>
+              
+              <div className="flex items-end">
+                <span className="font-bold mr-2">Note:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.note} onChange={e => setHeaderState({...headerState, note: e.target.value})} />
+              </div>
+              
+              <div className="flex items-end">
+                <span className="font-bold mr-2">Campus:</span>
+                <input type="text" className="border-b-[1.5px] border-dotted border-black flex-1 outline-none bg-transparent px-1" value={headerState.campus} onChange={e => setHeaderState({...headerState, campus: e.target.value})} />
               </div>
             </div>
+
+            {/* Middle Column Logo Placeholder */}
+            <div 
+              className="flex flex-col items-center justify-start px-4 relative group cursor-pointer" 
+              onClick={() => document.getElementById('header-logo-upload')?.click()}
+              title="Click to change logo"
+            >
+              <input 
+                type="file" 
+                id="header-logo-upload" 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleHeaderLogoUpload} 
+              />
+              <div className="absolute inset-0 bg-black/5 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <ImageIcon className="w-8 h-8 text-slate-700 drop-shadow-md" />
+              </div>
+              <img 
+                src={headerState.logoUrl} 
+                alt="School Logo" 
+                className="w-28 h-28 object-contain mb-1 bg-white"
+              />
+              <input 
+                type="text" 
+                className="text-center text-[11px] font-bold text-black tracking-tight leading-tight outline-none bg-transparent w-32 border-b border-transparent hover:border-slate-300 focus:border-black"
+                value={headerState.schoolNameKh || ''}
+                onChange={e => setHeaderState({...headerState, schoolNameKh: e.target.value})}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="School Name"
+              />
+            </div>
+
+            {/* Right Column Total Score */}
+            <div className="flex flex-col items-center justify-start w-32 pt-2">
+              <span className="font-bold mb-2">Total Score</span>
+              <div className="w-20 h-20 rounded-full border-2 border-black flex flex-col relative overflow-hidden">
+                <div className="flex-1 border-b-2 border-black"></div>
+                <div className="flex-1 flex items-center justify-center bg-white">
+                  <input type="text" className="w-full text-center outline-none bg-transparent font-serif text-lg" value={headerState.maxScore} onChange={e => setHeaderState({...headerState, maxScore: e.target.value})} />
+                </div>
+              </div>
+            </div>
+
           </div>
 
+          {/* Bottom Dashed Divider & Quiz ID */}
+          <div className="border-t-[3px] border-dashed border-black w-full mt-6 mb-2"></div>
+          <div className="text-center w-full flex justify-center">
+            <input 
+              type="text" 
+              className="font-bold underline text-center outline-none bg-transparent text-lg font-serif min-w-[150px]" 
+              value={headerState.quizId} 
+              onChange={e => setHeaderState({...headerState, quizId: e.target.value})} 
+            />
+          </div>
         </div>
-
-        {/* Bottom Dashed Divider & Quiz ID */}
-        <div className="border-t-[3px] border-dashed border-black w-full mt-6 mb-2"></div>
-        <div className="text-center w-full flex justify-center">
-          <input 
-            type="text" 
-            className="font-bold underline text-center outline-none bg-transparent text-lg font-serif min-w-[150px]" 
-            value={headerState.quizId} 
-            onChange={e => setHeaderState({...headerState, quizId: e.target.value})} 
-          />
-        </div>
-      </div>
+      ) : (
+        <button 
+          onClick={() => setShowHeader(true)} 
+          className="mb-8 w-full py-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:text-slate-700 hover:border-slate-400 flex items-center justify-center font-semibold transition-colors bg-white/50 hover:bg-white"
+        >
+          <Plus className="w-5 h-5 mr-2" /> Add Official Paper Header
+        </button>
+      )}
 
       {/* Questions List */}
       <div className="space-y-6">

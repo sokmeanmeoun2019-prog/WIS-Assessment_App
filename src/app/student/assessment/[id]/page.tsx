@@ -463,7 +463,7 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       </div>
 
       {/* Official Document Header (Paper Layout) - Shows only on first question to set the mood! */}
-      {currentQ === 0 && (
+      {currentQ === 0 && assessment.showHeader !== false && (
         <div className="bg-white rounded-xl p-8 shadow-sm border-2 border-slate-300 mb-8 font-serif text-black relative select-none">
           <div className="absolute top-2 right-4 text-xs text-slate-400 font-sans italic">Official Paper Header Format</div>
           
@@ -506,11 +506,11 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
             {/* Middle Column Logo Placeholder */}
             <div className="flex flex-col items-center justify-start px-4">
               <img 
-                src="https://static.wixstatic.com/media/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png/v1/fill/w_200,h_200,al_c/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png" 
-                alt="Western International School" 
-                className="w-28 h-28 object-contain mb-1"
+                src={headerFormat.logoUrl || "https://static.wixstatic.com/media/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png/v1/fill/w_200,h_200,al_c/3e2458_2ade346f009846cca13b37725a66d80f~mv2.png"} 
+                alt="School Logo" 
+                className="w-28 h-28 object-contain mb-1 bg-white"
               />
-              <div className="text-center text-[11px] font-bold text-black tracking-tight leading-tight">សាលាអន្តរជាតិវេស្ទើន</div>
+              <div className="text-center text-[11px] font-bold text-black tracking-tight leading-tight">{headerFormat.schoolNameKh || 'សាលាអន្តរជាតិវេស្ទើន'}</div>
             </div>
 
             {/* Right Column Total Score */}
