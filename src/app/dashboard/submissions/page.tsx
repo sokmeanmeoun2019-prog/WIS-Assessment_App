@@ -1,10 +1,10 @@
 "use client"
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save, Undo, Trash2 } from 'lucide-react'
+import { CheckCircle, Clock, ChevronDown, ChevronUp, User, FileText, Check, Pencil, Eraser, X, Save, Undo, Trash2, ArrowUpDown, Calendar } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import { db, auth } from '@/lib/firebase'
-import { collection, getDocs, doc, setDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore'
 
 // Helper to robustly compare HTML answers containing <math-field> tags
 const normalizeAnswer = (html: string | undefined) => {
@@ -252,6 +252,8 @@ export default function SubmissionsPage() {
   const [submissions, setSubmissions] = useState<any[]>([])
   const [assessments, setAssessments] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'class-asc' | 'student-asc'>('date-desc')
+  const [filterDate, setFilterDate] = useState<string>('')
   
   // Annotation state
   const [annotatingImage, setAnnotatingImage] = useState<{ subId: string, qId: string, url: string } | null>(null)
@@ -502,12 +504,97 @@ export default function SubmissionsPage() {
     setExpandedId(null)
   }
 
+  const handleDeleteSubmission = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const confirmDelete = window.confirm("Are you sure you want to delete this student submission?");
+    if (!confirmDelete) return;
+
+    const updated = submissions.filter(s => String(s.id) !== String(id));
+    setSubmissions(updated);
+    if (expandedId === id) setExpandedId(null);
+
+    if (!String(id).startsWith('mock-')) {
+      localStorage.setItem('demo_submissions', JSON.stringify(updated));
+      try {
+        fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submissions/${encodeURIComponent(id)}`, {
+          method: 'DELETE'
+        }).catch(() => {});
+        await deleteDoc(doc(db, "submissions", String(id)));
+      } catch (err) {
+        console.error("Failed to delete submission from Firebase", err);
+      }
+    }
+  }
+
+  const displayedSubmissions = [...submissions]
+    .filter((sub) => {
+      if (!filterDate) return true;
+      if (!sub.submittedAt) return false;
+      const d = new Date(sub.submittedAt);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}` === filterDate;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'date-desc') {
+        return new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime();
+      }
+      if (sortBy === 'date-asc') {
+        return new Date(a.submittedAt || 0).getTime() - new Date(b.submittedAt || 0).getTime();
+      }
+      if (sortBy === 'student-asc') {
+        return (a.studentName || '').toUpperCase().localeCompare((b.studentName || '').toUpperCase());
+      }
+      const classA = (a.className || a.studentId || '').toUpperCase();
+      const classB = (b.className || b.studentId || '').toUpperCase();
+      return classA.localeCompare(classB);
+    });
+
   return (
     <div className="max-w-6xl mx-auto pb-24">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Submissions & Grading</h1>
           <p className="text-slate-500">Review student work, grade calculations, and provide feedback.</p>
+        </div>
+
+        {/* Sort & Filter Controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm text-sm">
+            <Calendar className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+            <span className="text-slate-500 font-medium mr-2">Date:</span>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="outline-none text-slate-700 font-medium bg-transparent cursor-pointer"
+            />
+            {filterDate && (
+              <button
+                onClick={() => setFilterDate('')}
+                className="ml-2 text-xs text-slate-400 hover:text-red-500 font-bold"
+                title="Clear Date Filter"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm text-sm">
+            <ArrowUpDown className="w-4 h-4 text-indigo-600 mr-2 shrink-0" />
+            <span className="text-slate-500 font-medium mr-2">Sort by:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="outline-none text-slate-800 font-bold bg-transparent cursor-pointer"
+            >
+              <option value="date-desc">Date (Newest First)</option>
+              <option value="date-asc">Date (Oldest First)</option>
+              <option value="class-asc">Class (A–Z)</option>
+              <option value="student-asc">Student Name (A–Z)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -515,7 +602,7 @@ export default function SubmissionsPage() {
         
         {/* Table Header */}
         <div className="hidden md:grid grid-cols-5 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-600">
-          <div className="col-span-2">Assessment</div>
+          <div className="col-span-2">Assessment & Date</div>
           <div>Student</div>
           <div>Status</div>
           <div>Action</div>
@@ -523,10 +610,12 @@ export default function SubmissionsPage() {
 
         {/* List */}
         <div className="divide-y divide-slate-100">
-          {submissions.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">No submissions found. Take a quiz as a student first!</div>
+          {displayedSubmissions.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              {filterDate ? `No submissions found on ${filterDate}.` : 'No submissions found. Take a quiz as a student first!'}
+            </div>
           ) : (
-            submissions.map((sub) => (
+            displayedSubmissions.map((sub) => (
               <div key={sub.id} className="flex flex-col">
                 {/* Row */}
                 <div 
@@ -540,7 +629,7 @@ export default function SubmissionsPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-slate-800 break-words leading-tight">{sub.assessmentTitle}</p>
                       <p className="text-xs text-slate-500 mt-1">
-                        Submitted {new Date(sub.submittedAt).toLocaleDateString()}
+                        Submitted {new Date(sub.submittedAt).toLocaleDateString()} at {new Date(sub.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                   </div>
@@ -577,9 +666,18 @@ export default function SubmissionsPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-center md:justify-between text-indigo-600 font-medium text-sm mt-3 md:mt-0 pt-3 md:pt-0 border-t border-slate-100 md:border-t-0">
-                    <span>{expandedId === sub.id ? 'Close Review' : 'Open Review'}</span>
-                    {expandedId === sub.id ? <ChevronUp className="w-5 h-5 ml-1" /> : <ChevronDown className="w-5 h-5 ml-1" />}
+                  <div className="flex items-center justify-between text-indigo-600 font-medium text-sm mt-3 md:mt-0 pt-3 md:pt-0 border-t border-slate-100 md:border-t-0">
+                    <div className="flex items-center">
+                      <span>{expandedId === sub.id ? 'Close Review' : 'Open Review'}</span>
+                      {expandedId === sub.id ? <ChevronUp className="w-5 h-5 ml-1" /> : <ChevronDown className="w-5 h-5 ml-1" />}
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteSubmission(e, sub.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-2"
+                      title="Delete Submission"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -824,7 +922,13 @@ export default function SubmissionsPage() {
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="mt-6 flex justify-end">
+                    <div className="mt-6 flex items-center justify-between">
+                      <button
+                        onClick={(e) => handleDeleteSubmission(e, sub.id)}
+                        className="flex items-center px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-bold transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete Submission
+                      </button>
                       <button 
                         onClick={() => markAsGraded(sub.id)}
                         className="flex items-center px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-md shadow-green-200 transition-colors"
