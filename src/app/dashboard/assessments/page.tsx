@@ -42,8 +42,18 @@ export default function AssessmentsPage() {
           setAssessments(stored);
         }
 
+        // 1. Always push all local assessments to Firebase individually via direct HTTPS REST + SDK
+        stored.forEach(async (localItem: any) => {
+          try {
+            const cleanLocal = await shrinkAssessmentImagesIfNeeded(localItem, 550000);
+            await saveDocWithRestFallback("assessments", String(localItem.id), cleanLocal);
+          } catch (e) {
+            console.warn("Could not auto-sync local assessment:", localItem.id, e);
+          }
+        });
+
         try {
-          // Fetch from Firebase (Background)
+          // 2. Fetch from Firebase (Background)
           const querySnapshot = await getDocs(collection(db, "assessments"));
           let cloudAssessments = querySnapshot.docs.map(doc => doc.data());
           
@@ -51,23 +61,7 @@ export default function AssessmentsPage() {
             cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId);
           }
 
-          // Merge logic: cloud overwrites local, except for local drafts that are newer or don't exist in cloud
           const merged = [...stored];
-          const cloudIds = new Set(cloudAssessments.map(c => c.id));
-          
-          // Any assessment in local storage that is NOT in Firebase yet should be pushed to Firebase so students can find it!
-          stored.forEach(async (localItem: any) => {
-            if (!cloudIds.has(localItem.id)) {
-              let cleanLocal = JSON.parse(JSON.stringify(localItem));
-              try {
-                await setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal);
-              } catch (err) {
-                cleanLocal = await shrinkAssessmentImagesIfNeeded(cleanLocal);
-                await setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal).catch(() => {});
-              }
-            }
-          });
-
           cloudAssessments.forEach(cloudItem => {
             const idx = merged.findIndex(a => a.id === cloudItem.id);
             if (idx >= 0) {
@@ -222,21 +216,71 @@ export default function AssessmentsPage() {
     return copy;
   }
 
+  const toFirestoreValue = (val: any): any => {
+    if (val === null || val === undefined) return { nullValue: null };
+    if (typeof val === 'boolean') return { booleanValue: val };
+    if (typeof val === 'number') {
+      return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+    }
+    if (typeof val === 'string') return { stringValue: val };
+    if (Array.isArray(val)) {
+      return { arrayValue: { values: val.map(toFirestoreValue) } };
+    }
+    if (typeof val === 'object') {
+      const fields: any = {};
+      for (const [k, v] of Object.entries(val)) {
+        if (v !== undefined) fields[k] = toFirestoreValue(v);
+      }
+      return { mapValue: { fields } };
+    }
+    return { stringValue: String(val) };
+  };
+
+  const saveDocWithRestFallback = async (collectionName: string, docId: string, data: any) => {
+    // 1. Always fire direct HTTPS REST PATCH immediately (bypasses any stuck Firebase SDK WebSocket queue!)
+    const fields: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (v !== undefined) fields[k] = toFirestoreValue(v);
+    }
+    const restPromise = fetch(
+      `https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields })
+      }
+    ).then(async (res) => {
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
+      return true;
+    });
+
+    // 2. Also fire SDK setDoc with a 4s timeout
+    const sdkPromise = Promise.race([
+      setDoc(doc(db, collectionName, docId), data),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("SDK Timeout")), 4000))
+    ]).catch(() => {});
+
+    await Promise.all([restPromise, sdkPromise]);
+  };
+
   const syncAssessmentToCloud = async (assessmentId: string): Promise<any> => {
     try {
       const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]');
       const targetAss = assessments.find(a => String(a.id) === String(assessmentId)) || stored.find((a: any) => String(a.id) === String(assessmentId));
       if (targetAss) {
-        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 600000);
+        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 550000);
         try {
-          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+          await saveDocWithRestFallback("assessments", String(assessmentId), cleanAss);
           return cleanAss;
         } catch (err) {
           // Ultimate fallback: if still over 1MB, strip base64 header logo so the assessment questions still upload!
           if (cleanAss.headerFormat?.logoUrl?.startsWith('data:image')) {
             cleanAss.headerFormat.logoUrl = '';
           }
-          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+          await saveDocWithRestFallback("assessments", String(assessmentId), cleanAss);
           return cleanAss;
         }
       }
@@ -262,7 +306,7 @@ export default function AssessmentsPage() {
     
     // 1. Immediately save lightweight session to Firebase so code works right away!
     try {
-      await setDoc(doc(db, "sessions", newSession.id), newSession);
+      await saveDocWithRestFallback("sessions", newSession.id, newSession);
     } catch(e) {
       console.error("Failed to save session", e);
     }
@@ -281,7 +325,7 @@ export default function AssessmentsPage() {
       if (targetSession) {
         const { assessmentSnapshot, ...slimSession } = targetSession;
         // 1. Immediately save updated session code to Firebase!
-        await setDoc(doc(db, "sessions", slimSession.id), slimSession);
+        await saveDocWithRestFallback("sessions", slimSession.id, slimSession);
         // 2. Ensure assessment is synced to Firebase
         await syncAssessmentToCloud(slimSession.assessmentId);
       }
@@ -300,7 +344,7 @@ export default function AssessmentsPage() {
     setTimeout(() => setCopiedCode(null), 2000)
 
     const { assessmentSnapshot, ...slimSession } = session;
-    await setDoc(doc(db, "sessions", slimSession.id), slimSession).catch(() => {});
+    await saveDocWithRestFallback("sessions", slimSession.id, slimSession).catch(() => {});
     await syncAssessmentToCloud(session.assessmentId);
   }
 
@@ -311,7 +355,7 @@ export default function AssessmentsPage() {
     setTimeout(() => setCopiedLink(null), 2000)
 
     const { assessmentSnapshot, ...slimSession } = session;
-    await setDoc(doc(db, "sessions", slimSession.id), slimSession).catch(() => {});
+    await saveDocWithRestFallback("sessions", slimSession.id, slimSession).catch(() => {});
     await syncAssessmentToCloud(session.assessmentId);
   }
 

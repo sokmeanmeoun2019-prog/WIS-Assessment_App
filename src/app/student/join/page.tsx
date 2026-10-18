@@ -101,24 +101,54 @@ export default function StudentJoin() {
     try {
       let foundSession = null;
       let foundAssessment = null;
+      const cleanCode = code.trim().toUpperCase();
 
-      // Check Cloud with an 8-second timeout to prevent premature timeouts on mobile
+      const parseFirestoreFields = (fields: any): any => {
+        if (!fields) return {};
+        const out: any = {};
+        for (const [k, v] of Object.entries(fields) as [string, any][]) {
+          if ('stringValue' in v) out[k] = v.stringValue;
+          else if ('integerValue' in v) out[k] = Number(v.integerValue);
+          else if ('doubleValue' in v) out[k] = Number(v.doubleValue);
+          else if ('booleanValue' in v) out[k] = Boolean(v.booleanValue);
+          else if ('nullValue' in v) out[k] = null;
+          else if ('mapValue' in v) out[k] = parseFirestoreFields(v.mapValue.fields);
+          else if ('arrayValue' in v) out[k] = (v.arrayValue.values || []).map((item: any) => parseFirestoreFields({ item }).item);
+        }
+        return out;
+      };
+
+      // 1. Check Cloud via Firebase SDK (5s timeout)
       try {
-        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", code.trim().toUpperCase())));
-        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", cleanCode)));
+        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
         const qSnap: any = await Promise.race([fetchSession, timeoutSession]);
         
         if (!qSnap.empty) {
           foundSession = qSnap.docs[0].data();
         }
       } catch(fbErr) {
-        console.error("Firebase fetch error", fbErr);
+        console.warn("Firebase SDK session fetch error, trying REST fallback...", fbErr);
       }
 
-      // Fallback local
+      // 2. Direct Firestore REST API Fallback for Session (never hangs!)
+      if (!foundSession) {
+        try {
+          const res = await fetch("https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/sessions?pageSize=100");
+          if (res.ok) {
+            const data = await res.json();
+            const docs = (data.documents || []).map((d: any) => parseFirestoreFields(d.fields));
+            foundSession = docs.find((s: any) => String(s.code || '').trim().toUpperCase() === cleanCode);
+          }
+        } catch (restErr) {
+          console.warn("REST session fallback failed", restErr);
+        }
+      }
+
+      // 3. Fallback local
       if (!foundSession) {
         const storedSessions = JSON.parse(localStorage.getItem('demo_sessions') || '[]')
-        foundSession = storedSessions.find((s: any) => s.code.toUpperCase() === code.toUpperCase())
+        foundSession = storedSessions.find((s: any) => s.code.toUpperCase() === cleanCode)
       }
       
       if (!foundSession) {
@@ -141,29 +171,38 @@ export default function StudentJoin() {
         foundAssessment = foundSession.assessmentSnapshot;
       }
 
-      // 2. Otherwise check Cloud for Assessment with an 8-second timeout
+      // 2. Otherwise check Cloud for Assessment via Firebase SDK (5s timeout)
       if (!foundAssessment) {
         try {
           const { doc, getDoc } = await import('firebase/firestore');
           const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
-          const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+          const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
           const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
           
           if (docSnap && docSnap.exists && docSnap.exists()) {
             foundAssessment = docSnap.data();
-          } else {
-            const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
-            const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
-            if (!qSnap.empty) {
-              foundAssessment = qSnap.docs[0].data();
-            }
           }
         } catch(fbErr) {
-          console.warn("Firebase assessment fetch error:", fbErr);
+          console.warn("Firebase SDK assessment fetch error:", fbErr);
         }
       }
 
-      // 3. Fallback local
+      // 3. Direct Firestore REST API Fallback for Assessment
+      if (!foundAssessment) {
+        try {
+          const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessments/${encodeURIComponent(String(foundSession.assessmentId))}`);
+          if (res.ok) {
+            const docData = await res.json();
+            if (docData && docData.fields) {
+              foundAssessment = parseFirestoreFields(docData.fields);
+            }
+          }
+        } catch (restErr) {
+          console.warn("REST assessment fallback failed", restErr);
+        }
+      }
+
+      // 4. Fallback local
       if (!foundAssessment) {
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         foundAssessment = storedAssessments.find((a: any) => String(a.id) === String(foundSession.assessmentId))
@@ -205,15 +244,16 @@ export default function StudentJoin() {
     try {
       let submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
       
-      // Sync with Firebase to ensure deleted submissions don't block retakes
+      // Sync with Firebase to ensure deleted submissions don't block retakes (with 3s timeout)
       try {
         const q = query(
           collection(db, "submissions"), 
           where("assessmentId", "==", assessment.id),
           where("sessionId", "==", session.id)
         )
-        const snap = await getDocs(q)
-        const cloudSubs = snap.docs.map(d => d.data())
+        const timeoutSub = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+        const snap: any = await Promise.race([getDocs(q), timeoutSub]);
+        const cloudSubs = snap.docs.map((d: any) => d.data())
         // Filter out local submissions for this session that were deleted in Firebase
         const otherLocalSubs = submissions.filter((s: any) => !(s.assessmentId === assessment.id && s.sessionId === session.id))
         submissions = [...cloudSubs, ...otherLocalSubs]
