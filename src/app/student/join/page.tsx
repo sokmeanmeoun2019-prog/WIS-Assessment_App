@@ -167,7 +167,7 @@ export default function StudentJoin() {
     }
   }
 
-  const handleStart = (e: React.FormEvent) => {
+  const handleStart = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
@@ -178,11 +178,30 @@ export default function StudentJoin() {
 
     // Check if student already submitted for this specific session
     try {
-      const submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+      let submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
+      
+      // Sync with Firebase to ensure deleted submissions don't block retakes
+      try {
+        const q = query(
+          collection(db, "submissions"), 
+          where("assessmentId", "==", assessment.id),
+          where("sessionId", "==", session.id)
+        )
+        const snap = await getDocs(q)
+        const cloudSubs = snap.docs.map(d => d.data())
+        // Filter out local submissions for this session that were deleted in Firebase
+        const otherLocalSubs = submissions.filter((s: any) => !(s.assessmentId === assessment.id && s.sessionId === session.id))
+        submissions = [...cloudSubs, ...otherLocalSubs]
+        localStorage.setItem('demo_submissions', JSON.stringify(submissions))
+      } catch (fbErr) {
+        console.warn("Could not sync submissions with cloud, checking local only", fbErr)
+      }
+
       const hasSubmitted = submissions.some((sub: any) => 
         sub.assessmentId === assessment.id && 
         sub.sessionId === session.id && 
-        sub.studentId === studentId
+        sub.studentId.trim().toLowerCase() === studentId.trim().toLowerCase() &&
+        sub.studentName?.trim().toLowerCase() === studentName.trim().toLowerCase()
       )
 
       if (hasSubmitted) {

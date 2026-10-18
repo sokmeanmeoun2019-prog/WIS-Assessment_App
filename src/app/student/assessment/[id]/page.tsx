@@ -91,7 +91,7 @@ function TimerDisplay({ initialSeconds, onExpire, isPaused }: { initialSeconds: 
   }, [initialSeconds])
 
   useEffect(() => {
-    if (isPaused) return
+    if (isPaused || !initialSeconds || initialSeconds <= 0) return
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -103,7 +103,16 @@ function TimerDisplay({ initialSeconds, onExpire, isPaused }: { initialSeconds: 
       })
     }, 1000)
     return () => clearInterval(timer)
-  }, [isPaused])
+  }, [isPaused, initialSeconds])
+
+  if (!initialSeconds || initialSeconds <= 0) {
+    return (
+      <div className="flex items-center px-4 py-2 rounded-xl font-mono text-sm font-bold bg-slate-100 text-slate-600">
+        <Clock className="w-4 h-4 mr-2" />
+        No Time Limit
+      </div>
+    )
+  }
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60)
@@ -177,7 +186,8 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
       const hasSubmitted = submissions.some((sub: any) => 
         sub.assessmentId === activeSession.assessmentId && 
         sub.sessionId === activeSession.sessionId && 
-        sub.studentId === activeSession.studentId
+        sub.studentId?.trim().toLowerCase() === activeSession.studentId?.trim().toLowerCase() &&
+        sub.studentName?.trim().toLowerCase() === activeSession.studentName?.trim().toLowerCase()
       )
 
       if (hasSubmitted) {
@@ -273,15 +283,15 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
     setAnswers(prev => ({ ...prev, [qId]: val }))
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isAutoExpire: boolean = false) => {
     // Strict Deadline Enforcement
     if (studentSession?.deadline && new Date() > new Date(studentSession.deadline)) {
       setBlockError("The deadline for this assessment has passed. Your answers cannot be submitted.");
       return;
     }
 
-    // Check required questions
-    if (assessment && assessment.questions) {
+    // Check required questions (only when manually submitting, not when timer runs out)
+    if (!isAutoExpire && assessment && assessment.questions) {
       const missingRequired = assessment.questions.find((q: any) => {
         if (q.type === 'SECTION_BREAK' || !q.isRequired) return false;
         const ans = answers[q.id];
@@ -441,8 +451,8 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
         
         <TimerDisplay 
           initialSeconds={assessment.timeLimitMinutes * 60} 
-          onExpire={handleSubmit} 
-          isPaused={submitted} 
+          onExpire={() => handleSubmit(true)} 
+          isPaused={!!submitted} 
         />
 
       </div>
