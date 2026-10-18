@@ -167,7 +167,7 @@ export default function AssessmentsPage() {
 
   const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
-  const shrinkAssessmentImagesIfNeeded = async (ass: any, targetBytes = 600000): Promise<any> => {
+  const shrinkAssessmentImagesIfNeeded = async (ass: any, targetBytes = 500000): Promise<any> => {
     const compressBase64 = (b64: string, maxDim: number, quality: number): Promise<string> => {
       return new Promise((resolve) => {
         if (!b64 || !b64.startsWith('data:image')) return resolve(b64);
@@ -271,12 +271,25 @@ export default function AssessmentsPage() {
       const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]');
       const targetAss = assessments.find(a => String(a.id) === String(assessmentId)) || stored.find((a: any) => String(a.id) === String(assessmentId));
       if (targetAss) {
-        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 550000);
+        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 500000);
+
+        // If the assessment is STILL over 650KB (e.g. many embedded images in HTML or questions), offload question images into separate docs!
+        if (new Blob([JSON.stringify(cleanAss)]).size > 650000 && Array.isArray(cleanAss.questions)) {
+          for (let i = 0; i < cleanAss.questions.length; i++) {
+            const q = cleanAss.questions[i];
+            if (q.imageUrl && q.imageUrl.startsWith('data:image') && q.imageUrl.length > 20000) {
+              const imgDocId = `${assessmentId}_q_${q.id}`;
+              await saveDocWithRestFallback("assessment_images", imgDocId, { id: imgDocId, imageUrl: q.imageUrl }).catch(() => {});
+              q.imageUrl = `__CLOUD_IMG__:${imgDocId}`;
+            }
+          }
+        }
+
         try {
           await saveDocWithRestFallback("assessments", String(assessmentId), cleanAss);
           return cleanAss;
         } catch (err) {
-          // Ultimate fallback: if still over 1MB, strip base64 header logo so the assessment questions still upload!
+          // Ultimate fallback: strip base64 header logo and any remaining large base64 strings so questions still upload!
           if (cleanAss.headerFormat?.logoUrl?.startsWith('data:image')) {
             cleanAss.headerFormat.logoUrl = '';
           }

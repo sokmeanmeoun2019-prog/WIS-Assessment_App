@@ -213,6 +213,25 @@ export default function StudentJoin() {
         return
       }
 
+      // Re-attach any offloaded question images
+      if (Array.isArray(foundAssessment.questions)) {
+        for (let i = 0; i < foundAssessment.questions.length; i++) {
+          const q = foundAssessment.questions[i];
+          if (typeof q.imageUrl === 'string' && q.imageUrl.startsWith('__CLOUD_IMG__:')) {
+            const imgDocId = q.imageUrl.replace('__CLOUD_IMG__:', '');
+            try {
+              const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+              if (res.ok) {
+                const imgDoc = await res.json();
+                if (imgDoc?.fields?.imageUrl?.stringValue) {
+                  q.imageUrl = imgDoc.fields.imageUrl.stringValue;
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
       // Cache the assessment locally on the student's browser so the taking page loads instantly!
       try {
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
