@@ -206,18 +206,18 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
         try {
           let found = null;
           
-          // 1. Check local storage first (StudentJoin already fetched and hydrated all offloaded questions here!)
+          // 1. Check local storage first (StudentJoin already fetched and cached it here!)
           const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
           const localFound = stored.find((a: any) => String(a.id) === String(params.id))
-          if (localFound && Array.isArray(localFound.questions) && !localFound.questions.some((q: any) => q.__offloadedDocId)) {
+          if (localFound) {
             found = localFound;
           }
 
-          // 2. Otherwise fetch from Firebase (with REST fallback)
+          // 2. Otherwise fetch from Firebase (with fast 1.5s timeout)
           if (!found) {
             try {
               const fetchPromise = getDoc(doc(db, "assessments", params.id as string));
-              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
+              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500));
               const docSnap: any = await Promise.race([fetchPromise, timeoutPromise]);
               
               if (docSnap && docSnap.exists && docSnap.exists()) {
@@ -228,39 +228,39 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
             }
           }
 
-          if (!found && localFound) {
-            found = localFound;
-          }
-
-          // 3. Re-attach any offloaded questions or question images so Task images and content ALWAYS appear!
+          // 3. Re-attach any offloaded questions or question images in parallel so Task images and content ALWAYS appear instantly!
           if (found && Array.isArray(found.questions)) {
-            for (let i = 0; i < found.questions.length; i++) {
-              let q = found.questions[i];
-              if (q.__offloadedDocId) {
-                try {
-                  const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
-                  if (res.ok) {
-                    const qDoc = await res.json();
-                    if (qDoc?.fields?.questionData?.stringValue) {
-                      found.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
-                      q = found.questions[i];
+            await Promise.all(
+              found.questions.map(async (q: any, i: number) => {
+                let currentQ = q;
+                if (currentQ?.__offloadedDocId) {
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(currentQ.__offloadedDocId)}`);
+                    if (res.ok) {
+                      const qDoc = await res.json();
+                      if (qDoc?.fields?.questionData?.stringValue) {
+                        found.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                        currentQ = found.questions[i];
+                      }
                     }
-                  }
-                } catch (e) {}
-              }
-              if (typeof q.imageUrl === 'string' && q.imageUrl.startsWith('__CLOUD_IMG__:')) {
-                const imgDocId = q.imageUrl.replace('__CLOUD_IMG__:', '');
-                try {
-                  const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
-                  if (res.ok) {
-                    const imgDoc = await res.json();
-                    if (imgDoc?.fields?.imageUrl?.stringValue) {
-                      q.imageUrl = imgDoc.fields.imageUrl.stringValue;
+                  } catch (e) {}
+                }
+                if (typeof currentQ?.imageUrl === 'string' && currentQ.imageUrl.startsWith('__CLOUD_IMG__:')) {
+                  const imgDocId = currentQ.imageUrl.replace('__CLOUD_IMG__:', '');
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+                    if (res.ok) {
+                      const imgDoc = await res.json();
+                      if (imgDoc?.fields?.imageUrl?.stringValue) {
+                        currentQ.imageUrl = imgDoc.fields.imageUrl.stringValue;
+                      } else if (imgDoc?.fields?.dataUrl?.stringValue) {
+                        currentQ.imageUrl = imgDoc.fields.dataUrl.stringValue;
+                      }
                     }
-                  }
-                } catch (e) {}
-              }
-            }
+                  } catch (e) {}
+                }
+              })
+            );
           }
 
           if (found && found.questions) {

@@ -70,30 +70,35 @@ export default function StudentJoin() {
         setTestCode(storedSessions[0].code)
       }
 
-      // Check URL parameters for a direct link
+      // Check URL parameters for a direct link and auto-verify immediately!
       const urlCode = searchParams.get('code')
       if (urlCode) {
-        setCode(urlCode.toUpperCase())
-        const sessionsToSearch = storedSessions.length > 0 ? storedSessions : JSON.parse(localStorage.getItem('demo_sessions') || '[]')
-        const foundSession = sessionsToSearch.find((s: any) => s.code.toUpperCase() === urlCode.toUpperCase())
-        
-        if (foundSession && foundSession.status !== 'CLOSED') {
-          const foundAssessment = foundSession.assessmentSnapshot || storedAssessments.find((a: any) => a.id === foundSession.assessmentId) || JSON.parse(localStorage.getItem('demo_assessments') || '[]').find((a: any) => a.id === foundSession.assessmentId)
-          if (foundAssessment) {
-            setSession(foundSession)
-            setAssessment(foundAssessment)
-            setStep(2)
-          }
-        }
+        const cleanUrlCode = urlCode.trim().toUpperCase()
+        setCode(cleanUrlCode)
+        verifyCodeByString(cleanUrlCode)
       }
     } catch (e) {}
   }, [searchParams])
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const parseFirestoreFields = (fields: any): any => {
+    if (!fields) return {};
+    const out: any = {};
+    for (const [k, v] of Object.entries(fields) as [string, any][]) {
+      if ('stringValue' in v) out[k] = v.stringValue;
+      else if ('integerValue' in v) out[k] = Number(v.integerValue);
+      else if ('doubleValue' in v) out[k] = Number(v.doubleValue);
+      else if ('booleanValue' in v) out[k] = Boolean(v.booleanValue);
+      else if ('nullValue' in v) out[k] = null;
+      else if ('mapValue' in v) out[k] = parseFirestoreFields(v.mapValue.fields);
+      else if ('arrayValue' in v) out[k] = (v.arrayValue.values || []).map((item: any) => parseFirestoreFields({ item }).item);
+    }
+    return out;
+  };
+
+  const verifyCodeByString = async (rawCode: string) => {
     setError('')
-    
-    if (!code.trim() || code.length < 6) {
+    const cleanCode = rawCode.trim().toUpperCase()
+    if (!cleanCode || cleanCode.length < 6) {
       setError("Please enter a valid 6-character code.")
       return
     }
@@ -101,54 +106,35 @@ export default function StudentJoin() {
     try {
       let foundSession = null;
       let foundAssessment = null;
-      const cleanCode = code.trim().toUpperCase();
 
-      const parseFirestoreFields = (fields: any): any => {
-        if (!fields) return {};
-        const out: any = {};
-        for (const [k, v] of Object.entries(fields) as [string, any][]) {
-          if ('stringValue' in v) out[k] = v.stringValue;
-          else if ('integerValue' in v) out[k] = Number(v.integerValue);
-          else if ('doubleValue' in v) out[k] = Number(v.doubleValue);
-          else if ('booleanValue' in v) out[k] = Boolean(v.booleanValue);
-          else if ('nullValue' in v) out[k] = null;
-          else if ('mapValue' in v) out[k] = parseFirestoreFields(v.mapValue.fields);
-          else if ('arrayValue' in v) out[k] = (v.arrayValue.values || []).map((item: any) => parseFirestoreFields({ item }).item);
-        }
-        return out;
-      };
-
-      // 1. Check Cloud via Firebase SDK (5s timeout)
+      // 1. Check Direct Firestore HTTPS REST API FIRST (~150ms, never waits on WebSocket handshake!)
       try {
-        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", cleanCode)));
-        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
-        const qSnap: any = await Promise.race([fetchSession, timeoutSession]);
-        
-        if (!qSnap.empty) {
-          foundSession = qSnap.docs[0].data();
+        const res = await fetch("https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/sessions?pageSize=100");
+        if (res.ok) {
+          const data = await res.json();
+          const docs = (data.documents || []).map((d: any) => parseFirestoreFields(d.fields));
+          foundSession = docs.find((s: any) => String(s.code || '').trim().toUpperCase() === cleanCode);
         }
-      } catch(fbErr) {
-        console.warn("Firebase SDK session fetch error, trying REST fallback...", fbErr);
+      } catch (restErr) {
+        console.warn("REST session fetch failed", restErr);
       }
 
-      // 2. Direct Firestore REST API Fallback for Session (never hangs!)
-      if (!foundSession) {
-        try {
-          const res = await fetch("https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/sessions?pageSize=100");
-          if (res.ok) {
-            const data = await res.json();
-            const docs = (data.documents || []).map((d: any) => parseFirestoreFields(d.fields));
-            foundSession = docs.find((s: any) => String(s.code || '').trim().toUpperCase() === cleanCode);
-          }
-        } catch (restErr) {
-          console.warn("REST session fallback failed", restErr);
-        }
-      }
-
-      // 3. Fallback local
+      // 2. Fallback to Local Storage (instant)
       if (!foundSession) {
         const storedSessions = JSON.parse(localStorage.getItem('demo_sessions') || '[]')
-        foundSession = storedSessions.find((s: any) => s.code.toUpperCase() === cleanCode)
+        foundSession = storedSessions.find((s: any) => String(s.code || '').toUpperCase() === cleanCode)
+      }
+
+      // 3. Fallback to Firebase SDK (1.5s max timeout)
+      if (!foundSession) {
+        try {
+          const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", cleanCode)));
+          const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500));
+          const qSnap: any = await Promise.race([fetchSession, timeoutSession]);
+          if (!qSnap.empty) {
+            foundSession = qSnap.docs[0].data();
+          }
+        } catch(fbErr) {}
       }
       
       if (!foundSession) {
@@ -171,23 +157,7 @@ export default function StudentJoin() {
         foundAssessment = foundSession.assessmentSnapshot;
       }
 
-      // 2. Otherwise check Cloud for Assessment via Firebase SDK (5s timeout)
-      if (!foundAssessment) {
-        try {
-          const { doc, getDoc } = await import('firebase/firestore');
-          const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
-          const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
-          const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
-          
-          if (docSnap && docSnap.exists && docSnap.exists()) {
-            foundAssessment = docSnap.data();
-          }
-        } catch(fbErr) {
-          console.warn("Firebase SDK assessment fetch error:", fbErr);
-        }
-      }
-
-      // 3. Direct Firestore REST API Fallback for Assessment
+      // 2. Direct Firestore HTTPS REST API FIRST for Assessment (~150ms!)
       if (!foundAssessment) {
         try {
           const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessments/${encodeURIComponent(String(foundSession.assessmentId))}`);
@@ -198,14 +168,27 @@ export default function StudentJoin() {
             }
           }
         } catch (restErr) {
-          console.warn("REST assessment fallback failed", restErr);
+          console.warn("REST assessment fetch failed", restErr);
         }
       }
 
-      // 4. Fallback local
+      // 3. Fallback local
       if (!foundAssessment) {
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         foundAssessment = storedAssessments.find((a: any) => String(a.id) === String(foundSession.assessmentId))
+      }
+
+      // 4. Fallback to Firebase SDK (1.5s max timeout)
+      if (!foundAssessment) {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
+          const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500));
+          const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
+          if (docSnap && docSnap.exists && docSnap.exists()) {
+            foundAssessment = docSnap.data();
+          }
+        } catch(fbErr) {}
       }
 
       if (!foundAssessment) {
@@ -213,53 +196,64 @@ export default function StudentJoin() {
         return
       }
 
-      // Re-attach any offloaded questions or question images
+      // Advance the student to Step 2 (Enter Name & Class) IMMEDIATELY so there is ZERO waiting!
+      setSession(foundSession)
+      setAssessment(foundAssessment)
+      setStep(2)
+
+      // In parallel while they type their name, re-attach all offloaded HD questions & images at once!
       if (Array.isArray(foundAssessment.questions)) {
-        for (let i = 0; i < foundAssessment.questions.length; i++) {
-          let q = foundAssessment.questions[i];
-          if (q.__offloadedDocId) {
-            try {
-              const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
-              if (res.ok) {
-                const qDoc = await res.json();
-                if (qDoc?.fields?.questionData?.stringValue) {
-                  foundAssessment.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
-                  q = foundAssessment.questions[i];
+        await Promise.all(
+          foundAssessment.questions.map(async (q: any, i: number) => {
+            let currentQ = q;
+            if (currentQ?.__offloadedDocId) {
+              try {
+                const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(currentQ.__offloadedDocId)}`);
+                if (res.ok) {
+                  const qDoc = await res.json();
+                  if (qDoc?.fields?.questionData?.stringValue) {
+                    foundAssessment.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                    currentQ = foundAssessment.questions[i];
+                  }
                 }
-              }
-            } catch (e) {}
-          }
-          if (typeof q.imageUrl === 'string' && q.imageUrl.startsWith('__CLOUD_IMG__:')) {
-            const imgDocId = q.imageUrl.replace('__CLOUD_IMG__:', '');
-            try {
-              const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
-              if (res.ok) {
-                const imgDoc = await res.json();
-                if (imgDoc?.fields?.imageUrl?.stringValue) {
-                  q.imageUrl = imgDoc.fields.imageUrl.stringValue;
+              } catch (e) {}
+            }
+            if (typeof currentQ?.imageUrl === 'string' && currentQ.imageUrl.startsWith('__CLOUD_IMG__:')) {
+              const imgDocId = currentQ.imageUrl.replace('__CLOUD_IMG__:', '');
+              try {
+                const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+                if (res.ok) {
+                  const imgDoc = await res.json();
+                  if (imgDoc?.fields?.imageUrl?.stringValue) {
+                    currentQ.imageUrl = imgDoc.fields.imageUrl.stringValue;
+                  } else if (imgDoc?.fields?.dataUrl?.stringValue) {
+                    currentQ.imageUrl = imgDoc.fields.dataUrl.stringValue;
+                  }
                 }
-              }
-            } catch (e) {}
-          }
-        }
+              } catch (e) {}
+            }
+          })
+        );
       }
 
-      // Cache the assessment locally on the student's browser so the taking page loads instantly!
+      // Cache the fully hydrated assessment locally on the student's browser so the taking page loads instantly!
       try {
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
         const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAssessment.id))
         if (idx >= 0) storedAssessments[idx] = foundAssessment;
         else storedAssessments.push(foundAssessment);
         localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments))
+        setAssessment({ ...foundAssessment })
       } catch (e) {}
-
-      setSession(foundSession)
-      setAssessment(foundAssessment)
-      setStep(2)
 
     } catch (e) {
       setError("An error occurred verifying the code.")
     }
+  }
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await verifyCodeByString(code)
   }
 
   const handleStart = async (e: React.FormEvent) => {
@@ -275,22 +269,21 @@ export default function StudentJoin() {
     try {
       let submissions = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
       
-      // Sync with Firebase to ensure deleted submissions don't block retakes (with 3s timeout)
+      // Fast 1s check with Firebase so it never delays starting the assessment
       try {
         const q = query(
           collection(db, "submissions"), 
           where("assessmentId", "==", assessment.id),
           where("sessionId", "==", session.id)
         )
-        const timeoutSub = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+        const timeoutSub = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1000));
         const snap: any = await Promise.race([getDocs(q), timeoutSub]);
         const cloudSubs = snap.docs.map((d: any) => d.data())
-        // Filter out local submissions for this session that were deleted in Firebase
         const otherLocalSubs = submissions.filter((s: any) => !(s.assessmentId === assessment.id && s.sessionId === session.id))
         submissions = [...cloudSubs, ...otherLocalSubs]
         localStorage.setItem('demo_submissions', JSON.stringify(submissions))
       } catch (fbErr) {
-        console.warn("Could not sync submissions with cloud, checking local only", fbErr)
+        // Proceed immediately using local submissions cache
       }
 
       const hasSubmitted = submissions.some((sub: any) => 
