@@ -400,16 +400,72 @@ export default function CreateAssessment() {
       });
     };
 
-    // Ensure assessment is under 550KB before uploading
-    if (new Blob([JSON.stringify(cleanAssessment)]).size > 550000) {
+    const compressInlineHtmlImages = async (html: string, maxDim: number, quality: number): Promise<string> => {
+      if (!html || typeof html !== 'string' || !html.includes('data:image')) return html;
+      const regex = /data:image\/[a-zA-Z0-9+.-]+;base64,[a-zA-Z0-9+/=]+/g;
+      const matches = html.match(regex);
+      if (!matches) return html;
+      let updated = html;
+      for (const match of matches) {
+        const compressed = await compressB64(match, maxDim, quality);
+        updated = updated.replace(match, compressed);
+      }
+      return updated;
+    };
+
+    // Ensure assessment is under 500KB before uploading
+    const steps = [
+      { dim: 450, q: 0.45 },
+      { dim: 300, q: 0.35 },
+      { dim: 200, q: 0.25 }
+    ];
+    for (const step of steps) {
+      if (new Blob([JSON.stringify(cleanAssessment)]).size <= 500000) break;
       if (cleanAssessment.headerFormat?.logoUrl?.startsWith('data:image')) {
-        cleanAssessment.headerFormat.logoUrl = await compressB64(cleanAssessment.headerFormat.logoUrl, 250, 0.5);
+        cleanAssessment.headerFormat.logoUrl = await compressB64(cleanAssessment.headerFormat.logoUrl, Math.min(step.dim, 220), step.q);
       }
       if (Array.isArray(cleanAssessment.questions)) {
         for (let i = 0; i < cleanAssessment.questions.length; i++) {
-          if (cleanAssessment.questions[i].imageUrl?.startsWith('data:image')) {
-            cleanAssessment.questions[i].imageUrl = await compressB64(cleanAssessment.questions[i].imageUrl, 400, 0.4);
+          const q = cleanAssessment.questions[i];
+          if (q.imageUrl?.startsWith('data:image')) {
+            q.imageUrl = await compressB64(q.imageUrl, step.dim, step.q);
           }
+          if (q.content?.includes('data:image')) {
+            q.content = await compressInlineHtmlImages(q.content, step.dim, step.q);
+          }
+          if (Array.isArray(q.options)) {
+            for (let j = 0; j < q.options.length; j++) {
+              if (q.options[j].text?.includes('data:image')) {
+                q.options[j].text = await compressInlineHtmlImages(q.options[j].text, step.dim, step.q);
+              }
+            }
+          }
+          if (Array.isArray(q.pairs)) {
+            for (let j = 0; j < q.pairs.length; j++) {
+              if (q.pairs[j].left?.includes('data:image')) {
+                q.pairs[j].left = await compressInlineHtmlImages(q.pairs[j].left, step.dim, step.q);
+              }
+              if (q.pairs[j].right?.includes('data:image')) {
+                q.pairs[j].right = await compressInlineHtmlImages(q.pairs[j].right, step.dim, step.q);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // If still >550KB, offload large questions into assessment_questions collection
+    if (new Blob([JSON.stringify(cleanAssessment)]).size > 550000 && Array.isArray(cleanAssessment.questions)) {
+      for (let i = 0; i < cleanAssessment.questions.length; i++) {
+        const q = cleanAssessment.questions[i];
+        if (new Blob([JSON.stringify(q)]).size > 15000) {
+          const qDocId = `${targetId}_q_${i}`;
+          const qFields: any = { id: toFirestoreValue(qDocId), questionData: toFirestoreValue(JSON.stringify(q)) };
+          await fetch(
+            `https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(qDocId)}`,
+            { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: qFields }) }
+          ).catch(() => {});
+          cleanAssessment.questions[i] = { id: q.id, type: q.type, points: q.points, __offloadedDocId: qDocId };
         }
       }
     }
@@ -420,7 +476,7 @@ export default function CreateAssessment() {
       for (const [k, v] of Object.entries(cleanAssessment)) {
         if (v !== undefined) fields[k] = toFirestoreValue(v);
       }
-      await fetch(
+      const res = await fetch(
         `https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessments/${encodeURIComponent(targetId)}`,
         {
           method: 'PATCH',
@@ -428,6 +484,10 @@ export default function CreateAssessment() {
           body: JSON.stringify({ fields })
         }
       );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Firestore REST error:", errData);
+      }
       setDoc(doc(db, "assessments", targetId), cleanAssessment).catch(() => {});
     } catch (err: any) {
       console.error("Failed to save to Firebase", err);

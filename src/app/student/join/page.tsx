@@ -213,10 +213,22 @@ export default function StudentJoin() {
         return
       }
 
-      // Re-attach any offloaded question images
+      // Re-attach any offloaded questions or question images
       if (Array.isArray(foundAssessment.questions)) {
         for (let i = 0; i < foundAssessment.questions.length; i++) {
-          const q = foundAssessment.questions[i];
+          let q = foundAssessment.questions[i];
+          if (q.__offloadedDocId) {
+            try {
+              const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+              if (res.ok) {
+                const qDoc = await res.json();
+                if (qDoc?.fields?.questionData?.stringValue) {
+                  foundAssessment.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                  q = foundAssessment.questions[i];
+                }
+              }
+            } catch (e) {}
+          }
           if (typeof q.imageUrl === 'string' && q.imageUrl.startsWith('__CLOUD_IMG__:')) {
             const imgDocId = q.imageUrl.replace('__CLOUD_IMG__:', '');
             try {

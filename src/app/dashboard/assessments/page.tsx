@@ -193,6 +193,19 @@ export default function AssessmentsPage() {
       });
     };
 
+    const compressInlineHtmlImages = async (html: string, maxDim: number, quality: number): Promise<string> => {
+      if (!html || typeof html !== 'string' || !html.includes('data:image')) return html;
+      const regex = /data:image\/[a-zA-Z0-9+.-]+;base64,[a-zA-Z0-9+/=]+/g;
+      const matches = html.match(regex);
+      if (!matches) return html;
+      let updated = html;
+      for (const match of matches) {
+        const compressed = await compressBase64(match, maxDim, quality);
+        updated = updated.replace(match, compressed);
+      }
+      return updated;
+    };
+
     let copy = JSON.parse(JSON.stringify(ass));
     const steps = [
       { dim: 450, q: 0.45 },
@@ -207,8 +220,29 @@ export default function AssessmentsPage() {
       }
       if (Array.isArray(copy.questions)) {
         for (let i = 0; i < copy.questions.length; i++) {
-          if (copy.questions[i].imageUrl?.startsWith('data:image')) {
-            copy.questions[i].imageUrl = await compressBase64(copy.questions[i].imageUrl, step.dim, step.q);
+          const q = copy.questions[i];
+          if (q.imageUrl?.startsWith('data:image')) {
+            q.imageUrl = await compressBase64(q.imageUrl, step.dim, step.q);
+          }
+          if (q.content?.includes('data:image')) {
+            q.content = await compressInlineHtmlImages(q.content, step.dim, step.q);
+          }
+          if (Array.isArray(q.options)) {
+            for (let j = 0; j < q.options.length; j++) {
+              if (q.options[j].text?.includes('data:image')) {
+                q.options[j].text = await compressInlineHtmlImages(q.options[j].text, step.dim, step.q);
+              }
+            }
+          }
+          if (Array.isArray(q.pairs)) {
+            for (let j = 0; j < q.pairs.length; j++) {
+              if (q.pairs[j].left?.includes('data:image')) {
+                q.pairs[j].left = await compressInlineHtmlImages(q.pairs[j].left, step.dim, step.q);
+              }
+              if (q.pairs[j].right?.includes('data:image')) {
+                q.pairs[j].right = await compressInlineHtmlImages(q.pairs[j].right, step.dim, step.q);
+              }
+            }
           }
         }
       }
@@ -273,14 +307,14 @@ export default function AssessmentsPage() {
       if (targetAss) {
         let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 500000);
 
-        // If the assessment is STILL over 650KB (e.g. many embedded images in HTML or questions), offload question images into separate docs!
-        if (new Blob([JSON.stringify(cleanAss)]).size > 650000 && Array.isArray(cleanAss.questions)) {
+        // If the assessment is STILL over 550KB (e.g. many pasted images inside question HTML), offload each question into its own cloud document!
+        if (new Blob([JSON.stringify(cleanAss)]).size > 550000 && Array.isArray(cleanAss.questions)) {
           for (let i = 0; i < cleanAss.questions.length; i++) {
             const q = cleanAss.questions[i];
-            if (q.imageUrl && q.imageUrl.startsWith('data:image') && q.imageUrl.length > 20000) {
-              const imgDocId = `${assessmentId}_q_${q.id}`;
-              await saveDocWithRestFallback("assessment_images", imgDocId, { id: imgDocId, imageUrl: q.imageUrl }).catch(() => {});
-              q.imageUrl = `__CLOUD_IMG__:${imgDocId}`;
+            if (new Blob([JSON.stringify(q)]).size > 15000) {
+              const qDocId = `${assessmentId}_q_${i}`;
+              await saveDocWithRestFallback("assessment_questions", qDocId, { id: qDocId, questionData: JSON.stringify(q) }).catch(() => {});
+              cleanAss.questions[i] = { id: q.id, type: q.type, points: q.points, __offloadedDocId: qDocId };
             }
           }
         }
@@ -289,7 +323,6 @@ export default function AssessmentsPage() {
           await saveDocWithRestFallback("assessments", String(assessmentId), cleanAss);
           return cleanAss;
         } catch (err) {
-          // Ultimate fallback: strip base64 header logo and any remaining large base64 strings so questions still upload!
           if (cleanAss.headerFormat?.logoUrl?.startsWith('data:image')) {
             cleanAss.headerFormat.logoUrl = '';
           }
