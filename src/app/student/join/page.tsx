@@ -136,16 +136,25 @@ export default function StudentJoin() {
         return
       }
 
-      // Check Cloud for Assessment with a 3-second timeout
+      // Check Cloud for Assessment with an 8-second timeout
       try {
-        const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
-        const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
-        const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
+        const { doc, getDoc } = await import('firebase/firestore');
+        const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
+        const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+        const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
         
-        if (!qSnap.empty) {
-          foundAssessment = qSnap.docs[0].data();
+        if (docSnap && docSnap.exists && docSnap.exists()) {
+          foundAssessment = docSnap.data();
+        } else {
+          const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
+          const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
+          if (!qSnap.empty) {
+            foundAssessment = qSnap.docs[0].data();
+          }
         }
-      } catch(fbErr) {}
+      } catch(fbErr) {
+        console.warn("Firebase assessment fetch error:", fbErr);
+      }
 
       // Fallback local
       if (!foundAssessment) {

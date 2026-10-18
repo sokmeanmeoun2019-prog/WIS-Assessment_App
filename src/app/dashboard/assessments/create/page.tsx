@@ -341,25 +341,28 @@ export default function CreateAssessment() {
       teacherId: auth.currentUser?.uid || 'legacy'
     }
     
+    // Clean out any undefined fields so Firestore never rejects the document
+    const cleanAssessment = JSON.parse(JSON.stringify(newAssessment))
+
     // Save to local storage for drafts
     const existing = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
     const existingIndex = existing.findIndex((a: any) => a.id === targetId);
     if (existingIndex >= 0) {
-      existing[existingIndex] = { ...existing[existingIndex], ...newAssessment }
+      existing[existingIndex] = { ...existing[existingIndex], ...cleanAssessment }
     } else {
-      existing.unshift(newAssessment);
+      existing.unshift(cleanAssessment);
     }
     localStorage.setItem('demo_assessments', JSON.stringify(existing))
 
-    // Save to Firebase! (Non-blocking so it doesn't hang the UI)
-    setDoc(doc(db, "assessments", targetId), newAssessment).catch((err) => {
+    // Save to Firebase and wait for it to finish before redirecting!
+    try {
+      await setDoc(doc(db, "assessments", targetId), cleanAssessment);
+    } catch (err) {
       console.error("Failed to save to Firebase", err);
-    });
+    }
 
-    setTimeout(() => {
-      setLoading(false)
-      router.push('/dashboard/assessments')
-    }, 300)
+    setLoading(false)
+    router.push('/dashboard/assessments')
   }
 
   const [showImportModal, setShowImportModal] = useState(false)

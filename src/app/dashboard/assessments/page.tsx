@@ -53,6 +53,16 @@ export default function AssessmentsPage() {
 
           // Merge logic: cloud overwrites local, except for local drafts that are newer or don't exist in cloud
           const merged = [...stored];
+          const cloudIds = new Set(cloudAssessments.map(c => c.id));
+          
+          // Any assessment in local storage that is NOT in Firebase yet should be pushed to Firebase so students can find it!
+          stored.forEach(localItem => {
+            if (!cloudIds.has(localItem.id)) {
+              const cleanLocal = JSON.parse(JSON.stringify(localItem));
+              setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal).catch(() => {});
+            }
+          });
+
           cloudAssessments.forEach(cloudItem => {
             const idx = merged.findIndex(a => a.id === cloudItem.id);
             if (idx >= 0) {
@@ -147,6 +157,18 @@ export default function AssessmentsPage() {
 
   const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
+  const syncAssessmentToCloud = async (assessmentId: string) => {
+    try {
+      const targetAss = assessments.find(a => a.id === assessmentId);
+      if (targetAss) {
+        const cleanAss = JSON.parse(JSON.stringify(targetAss));
+        await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+      }
+    } catch (e) {
+      console.error("Failed to sync assessment to cloud", e);
+    }
+  }
+
   const handleAddSession = async (assessmentId: string) => {
     const newSession = {
       id: `sess-${Date.now()}`,
@@ -161,9 +183,9 @@ export default function AssessmentsPage() {
     setSessions(nextSessions);
     localStorage.setItem('demo_sessions', JSON.stringify(nextSessions));
     
-    // push to cloud
+    // push both session and assessment to cloud
     try {
-      await doc(collection(db, "sessions"), newSession.id);
+      await syncAssessmentToCloud(assessmentId);
       await setDoc(doc(db, "sessions", newSession.id), newSession);
     } catch(e) {}
   }
@@ -205,12 +227,12 @@ export default function AssessmentsPage() {
 
   const handleDuplicateAssessment = (assessment: any) => {
     const newId = Date.now().toString();
-    const newAssessment = {
+    const newAssessment = JSON.parse(JSON.stringify({
       ...assessment,
       id: newId,
       title: `${assessment.title} (Copy)`,
       createdAt: new Date().toISOString()
-    };
+    }));
     
     const nextAssessments = [...assessments, newAssessment];
     setAssessments(nextAssessments);
@@ -224,7 +246,10 @@ export default function AssessmentsPage() {
     } catch(e) {}
   }
 
-  const handleQuickShare = (assessmentId: string) => {
+  const handleQuickShare = async (assessmentId: string) => {
+    // Always ensure the assessment itself is synced to Firebase when sharing!
+    syncAssessmentToCloud(assessmentId);
+
     const existingSession = sessions.find(s => s.assessmentId === assessmentId && s.status === 'ACTIVE')
     if (existingSession) {
       copyLinkOnly(existingSession)
