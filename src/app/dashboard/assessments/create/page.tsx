@@ -165,7 +165,7 @@ export default function CreateAssessment() {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        const max = 800
+        const max = 600
         
         if (width > height) {
           if (width > max) {
@@ -184,8 +184,8 @@ export default function CreateAssessment() {
         const ctx = canvas.getContext('2d')
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height)
-          // Compress to JPEG to save space in Firestore (0.7 quality)
-          const base64Url = canvas.toDataURL('image/jpeg', 0.7)
+          // Compress to JPEG to save space in Firestore (0.6 quality prevents >1MB Firestore limit)
+          const base64Url = canvas.toDataURL('image/jpeg', 0.6)
           updateQuestion(questionId, 'imageUrl', base64Url)
         }
         setUploadingImageId(null)
@@ -210,7 +210,7 @@ export default function CreateAssessment() {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        const max = 600 // increased for better retina resolution
+        const max = 350 // Keep under Firestore 1MB limit while remaining sharp
         
         if (width > height) {
           if (width > max) {
@@ -228,8 +228,10 @@ export default function CreateAssessment() {
         canvas.height = height
         const ctx = canvas.getContext('2d')
         if (ctx) {
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, 0, width, height)
           ctx.drawImage(img, 0, 0, width, height)
-          const base64Url = canvas.toDataURL('image/png')
+          const base64Url = canvas.toDataURL('image/jpeg', 0.8)
           setHeaderState(prev => ({ ...prev, logoUrl: base64Url }))
         }
       }
@@ -357,8 +359,47 @@ export default function CreateAssessment() {
     // Save to Firebase and wait for it to finish before redirecting!
     try {
       await setDoc(doc(db, "assessments", targetId), cleanAssessment);
-    } catch (err) {
-      console.error("Failed to save to Firebase", err);
+    } catch (err: any) {
+      console.error("First attempt to save to Firebase failed, compressing images and retrying...", err);
+      try {
+        const compressB64 = (b64: string, maxDim = 450, quality = 0.5): Promise<string> => {
+          return new Promise((resolve) => {
+            if (!b64 || !b64.startsWith('data:image')) return resolve(b64);
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let w = img.width, h = img.height;
+              if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
+              else { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+              } else resolve(b64);
+            };
+            img.onerror = () => resolve(b64);
+            img.src = b64;
+          });
+        };
+
+        if (cleanAssessment.headerFormat?.logoUrl?.startsWith('data:image')) {
+          cleanAssessment.headerFormat.logoUrl = await compressB64(cleanAssessment.headerFormat.logoUrl, 300, 0.7);
+        }
+        if (Array.isArray(cleanAssessment.questions)) {
+          for (let i = 0; i < cleanAssessment.questions.length; i++) {
+            if (cleanAssessment.questions[i].imageUrl?.startsWith('data:image')) {
+              cleanAssessment.questions[i].imageUrl = await compressB64(cleanAssessment.questions[i].imageUrl, 500, 0.5);
+            }
+          }
+        }
+        await setDoc(doc(db, "assessments", targetId), cleanAssessment);
+      } catch (retryErr: any) {
+        console.error("Failed to save to Firebase after compression", retryErr);
+        alert("Warning: Could not upload assessment to cloud (" + (retryErr?.message || "Size limit exceeded") + "). Please try using fewer or smaller images.");
+      }
     }
 
     setLoading(false)

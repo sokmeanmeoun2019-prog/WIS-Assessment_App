@@ -56,10 +56,15 @@ export default function AssessmentsPage() {
           const cloudIds = new Set(cloudAssessments.map(c => c.id));
           
           // Any assessment in local storage that is NOT in Firebase yet should be pushed to Firebase so students can find it!
-          stored.forEach(localItem => {
+          stored.forEach(async (localItem: any) => {
             if (!cloudIds.has(localItem.id)) {
-              const cleanLocal = JSON.parse(JSON.stringify(localItem));
-              setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal).catch(() => {});
+              let cleanLocal = JSON.parse(JSON.stringify(localItem));
+              try {
+                await setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal);
+              } catch (err) {
+                cleanLocal = await shrinkAssessmentImagesIfNeeded(cleanLocal);
+                await setDoc(doc(db, "assessments", String(localItem.id)), cleanLocal).catch(() => {});
+              }
             }
           });
 
@@ -157,12 +162,56 @@ export default function AssessmentsPage() {
 
   const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
+  const shrinkAssessmentImagesIfNeeded = async (ass: any): Promise<any> => {
+    const compressBase64 = (b64: string, maxDim = 450, quality = 0.5): Promise<string> => {
+      return new Promise((resolve) => {
+        if (!b64 || !b64.startsWith('data:image')) return resolve(b64);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
+          else { if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; } }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else resolve(b64);
+        };
+        img.onerror = () => resolve(b64);
+        img.src = b64;
+      });
+    };
+
+    const copy = JSON.parse(JSON.stringify(ass));
+    if (copy.headerFormat?.logoUrl?.startsWith('data:image')) {
+      copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, 300, 0.7);
+    }
+    if (Array.isArray(copy.questions)) {
+      for (let i = 0; i < copy.questions.length; i++) {
+        if (copy.questions[i].imageUrl?.startsWith('data:image')) {
+          copy.questions[i].imageUrl = await compressBase64(copy.questions[i].imageUrl, 500, 0.5);
+        }
+      }
+    }
+    return copy;
+  }
+
   const syncAssessmentToCloud = async (assessmentId: string) => {
     try {
-      const targetAss = assessments.find(a => a.id === assessmentId);
+      const targetAss = assessments.find(a => String(a.id) === String(assessmentId));
       if (targetAss) {
-        const cleanAss = JSON.parse(JSON.stringify(targetAss));
-        await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+        let cleanAss = JSON.parse(JSON.stringify(targetAss));
+        try {
+          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+        } catch (err) {
+          // Often fails if base64 images exceed Firestore 1MB limit — compress & retry!
+          cleanAss = await shrinkAssessmentImagesIfNeeded(cleanAss);
+          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+        }
       }
     } catch (e) {
       console.error("Failed to sync assessment to cloud", e);
@@ -397,7 +446,10 @@ export default function AssessmentsPage() {
                     <Share2 className="w-5 h-5" />
                   </button>
                   <button 
-                    onClick={() => setManageSessionId(a.id)}
+                    onClick={() => {
+                      syncAssessmentToCloud(a.id)
+                      setManageSessionId(a.id)
+                    }}
                     className="text-slate-400 hover:text-indigo-600 p-1 transition-colors" 
                     title="Manage Access Codes"
                   >
