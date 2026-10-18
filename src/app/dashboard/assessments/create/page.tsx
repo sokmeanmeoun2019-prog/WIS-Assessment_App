@@ -165,7 +165,7 @@ export default function CreateAssessment() {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        const max = 600
+        const max = 900
         
         if (width > height) {
           if (width > max) {
@@ -184,8 +184,7 @@ export default function CreateAssessment() {
         const ctx = canvas.getContext('2d')
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height)
-          // Compress to JPEG to save space in Firestore (0.6 quality prevents >1MB Firestore limit)
-          const base64Url = canvas.toDataURL('image/jpeg', 0.6)
+          const base64Url = canvas.toDataURL('image/jpeg', 0.75)
           updateQuestion(questionId, 'imageUrl', base64Url)
         }
         setUploadingImageId(null)
@@ -415,9 +414,9 @@ export default function CreateAssessment() {
 
     // Ensure assessment is under 500KB before uploading
     const steps = [
-      { dim: 450, q: 0.45 },
-      { dim: 300, q: 0.35 },
-      { dim: 200, q: 0.25 }
+      { dim: 850, q: 0.7 },
+      { dim: 650, q: 0.55 },
+      { dim: 450, q: 0.4 }
     ];
     for (const step of steps) {
       if (new Blob([JSON.stringify(cleanAssessment)]).size <= 500000) break;

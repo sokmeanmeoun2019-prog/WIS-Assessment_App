@@ -560,14 +560,20 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
             )}
             
             {q.imageUrl && (
-              <div className="mb-6">
-                <img src={q.imageUrl} alt="Question figure" className="max-w-full h-auto max-h-96 rounded-lg border border-slate-200 shadow-sm" />
+              <div className="mb-8 flex justify-center">
+                <img 
+                  src={q.imageUrl} 
+                  alt="Question figure" 
+                  onClick={() => window.open(q.imageUrl, '_blank')}
+                  className="w-full max-w-4xl h-auto max-h-[650px] object-contain rounded-xl border border-slate-200 shadow-sm cursor-zoom-in" 
+                  title="Click to view larger"
+                />
               </div>
             )}
             
             <div className="flex items-start mb-8">
               <div 
-                className="prose max-w-none text-slate-800 text-lg flex-1"
+                className="prose max-w-none text-slate-800 text-lg flex-1 [&_img]:w-full [&_img]:max-w-4xl [&_img]:h-auto [&_img]:rounded-xl [&_img]:my-3"
                 dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) }}
               />
               {q.isRequired && (

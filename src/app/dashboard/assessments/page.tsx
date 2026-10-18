@@ -208,9 +208,9 @@ export default function AssessmentsPage() {
 
     let copy = JSON.parse(JSON.stringify(ass));
     const steps = [
-      { dim: 450, q: 0.45 },
-      { dim: 300, q: 0.35 },
-      { dim: 200, q: 0.25 }
+      { dim: 850, q: 0.7 },
+      { dim: 650, q: 0.55 },
+      { dim: 450, q: 0.4 }
     ];
 
     for (const step of steps) {
