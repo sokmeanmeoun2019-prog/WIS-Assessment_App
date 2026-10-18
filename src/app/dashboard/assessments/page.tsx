@@ -138,11 +138,22 @@ export default function AssessmentsPage() {
         try {
           const snap = await getDocs(collection(db, "sessions"));
           const cloudSessions = snap.docs.map(doc => doc.data());
+          const cloudSessionMap = new Map(cloudSessions.map(cs => [cs.id, cs]));
+
+          // Push any local sessions that don't exist in cloud or have a newer code (like regenerated codes) to Firebase!
+          storedSessions.forEach((ls: any) => {
+            const cs = cloudSessionMap.get(ls.id);
+            if (!cs || cs.code !== ls.code || cs.status !== ls.status) {
+              const { assessmentSnapshot, ...slimSession } = ls;
+              setDoc(doc(db, "sessions", slimSession.id), slimSession).catch(() => {});
+            }
+          });
+
           if (cloudSessions.length > 0) {
             const merged = [...storedSessions];
             cloudSessions.forEach(cs => {
               const idx = merged.findIndex(s => s.id === cs.id);
-              if (idx >= 0) merged[idx] = cs; else merged.push(cs);
+              if (idx < 0) merged.push(cs);
             });
             storedSessions = merged;
             localStorage.setItem('demo_sessions', JSON.stringify(storedSessions));
@@ -162,12 +173,14 @@ export default function AssessmentsPage() {
 
   const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
-  const shrinkAssessmentImagesIfNeeded = async (ass: any, targetBytes = 750000): Promise<any> => {
+  const shrinkAssessmentImagesIfNeeded = async (ass: any, targetBytes = 600000): Promise<any> => {
     const compressBase64 = (b64: string, maxDim: number, quality: number): Promise<string> => {
       return new Promise((resolve) => {
         if (!b64 || !b64.startsWith('data:image')) return resolve(b64);
+        const timeout = setTimeout(() => resolve(b64), 2500);
         const img = new Image();
         img.onload = () => {
+          clearTimeout(timeout);
           const canvas = document.createElement('canvas');
           let w = img.width, h = img.height;
           if (w > h) { if (w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; } }
@@ -181,22 +194,22 @@ export default function AssessmentsPage() {
             resolve(canvas.toDataURL('image/jpeg', quality));
           } else resolve(b64);
         };
-        img.onerror = () => resolve(b64);
+        img.onerror = () => { clearTimeout(timeout); resolve(b64); };
         img.src = b64;
       });
     };
 
     let copy = JSON.parse(JSON.stringify(ass));
     const steps = [
-      { dim: 500, q: 0.5 },
-      { dim: 350, q: 0.4 },
-      { dim: 250, q: 0.3 }
+      { dim: 450, q: 0.45 },
+      { dim: 300, q: 0.35 },
+      { dim: 200, q: 0.25 }
     ];
 
     for (const step of steps) {
-      if (JSON.stringify(copy).length <= targetBytes) break;
+      if (new Blob([JSON.stringify(copy)]).size <= targetBytes) break;
       if (copy.headerFormat?.logoUrl?.startsWith('data:image')) {
-        copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, Math.min(step.dim, 250), step.q);
+        copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, Math.min(step.dim, 220), step.q);
       }
       if (Array.isArray(copy.questions)) {
         for (let i = 0; i < copy.questions.length; i++) {
@@ -211,11 +224,21 @@ export default function AssessmentsPage() {
 
   const syncAssessmentToCloud = async (assessmentId: string): Promise<any> => {
     try {
-      const targetAss = assessments.find(a => String(a.id) === String(assessmentId));
+      const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]');
+      const targetAss = assessments.find(a => String(a.id) === String(assessmentId)) || stored.find((a: any) => String(a.id) === String(assessmentId));
       if (targetAss) {
-        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 750000);
-        await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
-        return cleanAss;
+        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 600000);
+        try {
+          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+          return cleanAss;
+        } catch (err) {
+          // Ultimate fallback: if still over 1MB, strip base64 header logo so the assessment questions still upload!
+          if (cleanAss.headerFormat?.logoUrl?.startsWith('data:image')) {
+            cleanAss.headerFormat.logoUrl = '';
+          }
+          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+          return cleanAss;
+        }
       }
     } catch (e) {
       console.error("Failed to sync assessment to cloud", e);
@@ -224,31 +247,28 @@ export default function AssessmentsPage() {
   }
 
   const handleAddSession = async (assessmentId: string) => {
-    const cleanAss = await syncAssessmentToCloud(assessmentId);
     const newSession: any = {
       id: `sess-${Date.now()}`,
-      assessmentId,
+      assessmentId: String(assessmentId),
       className: 'New Class',
       code: generateCode(),
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       deadline: ''
     }
-    if (cleanAss) {
-      newSession.assessmentSnapshot = cleanAss;
-    }
     const nextSessions = [...sessions, newSession];
     setSessions(nextSessions);
     localStorage.setItem('demo_sessions', JSON.stringify(nextSessions));
     
-    // push session (with embedded assessment backup) to cloud
+    // 1. Immediately save lightweight session to Firebase so code works right away!
     try {
       await setDoc(doc(db, "sessions", newSession.id), newSession);
     } catch(e) {
-      // If embedding snapshot made session too big, save session without snapshot
-      const { assessmentSnapshot, ...slimSession } = newSession;
-      await setDoc(doc(db, "sessions", newSession.id), slimSession).catch(() => {});
+      console.error("Failed to save session", e);
     }
+
+    // 2. Sync the assessment document in parallel
+    await syncAssessmentToCloud(assessmentId);
   }
 
   const handleUpdateSession = async (sessionId: string, updates: any) => {
@@ -259,10 +279,15 @@ export default function AssessmentsPage() {
     try {
       const targetSession = nextSessions.find(s => s.id === sessionId);
       if (targetSession) {
-        await syncAssessmentToCloud(targetSession.assessmentId);
-        await setDoc(doc(db, "sessions", targetSession.id), targetSession);
+        const { assessmentSnapshot, ...slimSession } = targetSession;
+        // 1. Immediately save updated session code to Firebase!
+        await setDoc(doc(db, "sessions", slimSession.id), slimSession);
+        // 2. Ensure assessment is synced to Firebase
+        await syncAssessmentToCloud(slimSession.assessmentId);
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error("Failed to update session", e);
+    }
   }
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -274,10 +299,9 @@ export default function AssessmentsPage() {
     setCopiedCode(session.code)
     setTimeout(() => setCopiedCode(null), 2000)
 
-    const cleanAss = await syncAssessmentToCloud(session.assessmentId)
-    if (cleanAss) {
-      setDoc(doc(db, "sessions", session.id), { ...session, assessmentSnapshot: cleanAss }).catch(() => {})
-    }
+    const { assessmentSnapshot, ...slimSession } = session;
+    await setDoc(doc(db, "sessions", slimSession.id), slimSession).catch(() => {});
+    await syncAssessmentToCloud(session.assessmentId);
   }
 
   const copyLinkOnly = async (session: any) => {
@@ -286,10 +310,9 @@ export default function AssessmentsPage() {
     setCopiedLink(session.id)
     setTimeout(() => setCopiedLink(null), 2000)
 
-    const cleanAss = await syncAssessmentToCloud(session.assessmentId)
-    if (cleanAss) {
-      setDoc(doc(db, "sessions", session.id), { ...session, assessmentSnapshot: cleanAss }).catch(() => {})
-    }
+    const { assessmentSnapshot, ...slimSession } = session;
+    await setDoc(doc(db, "sessions", slimSession.id), slimSession).catch(() => {});
+    await syncAssessmentToCloud(session.assessmentId);
   }
 
   const showToast = (msg: string) => {
@@ -313,47 +336,33 @@ export default function AssessmentsPage() {
     showToast("Assessment duplicated successfully!");
     
     // Push to firebase so it works instantly everywhere
-    try {
-      setDoc(doc(db, "assessments", newId), newAssessment);
-    } catch(e) {}
+    shrinkAssessmentImagesIfNeeded(newAssessment, 600000).then(cleanAss => {
+      setDoc(doc(db, "assessments", newId), cleanAss).catch(() => {});
+    });
   }
 
   const handleQuickShare = async (assessmentId: string) => {
-    // Always ensure the assessment itself is synced to Firebase when sharing!
-    const cleanAss = await syncAssessmentToCloud(assessmentId);
-
     const existingSession = sessions.find(s => s.assessmentId === assessmentId && s.status === 'ACTIVE')
     if (existingSession) {
-      if (cleanAss) {
-        await setDoc(doc(db, "sessions", existingSession.id), { ...existingSession, assessmentSnapshot: cleanAss }).catch(() => {});
-      }
       copyLinkOnly(existingSession)
       showToast("Direct assessment link copied to clipboard!")
     } else {
       const newSession: any = {
         id: `sess-${Date.now()}`,
-        assessmentId,
+        assessmentId: String(assessmentId),
         className: 'General Class',
         code: generateCode(),
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
         deadline: ''
       }
-      if (cleanAss) {
-        newSession.assessmentSnapshot = cleanAss;
-      }
       
       const nextSessions = [...sessions, newSession];
       setSessions(nextSessions);
       localStorage.setItem('demo_sessions', JSON.stringify(nextSessions));
       
-      // Push to cloud instantly so students can access it
-      try {
-        await setDoc(doc(db, "sessions", newSession.id), newSession);
-      } catch(e) {
-        const { assessmentSnapshot, ...slimSession } = newSession;
-        await setDoc(doc(db, "sessions", newSession.id), slimSession).catch(() => {});
-      }
+      // 1. Push lightweight session to cloud instantly so students can access it
+      await setDoc(doc(db, "sessions", newSession.id), newSession).catch(() => {});
       
       copyLinkOnly(newSession)
       showToast("New session created. Direct assessment link copied to clipboard!")

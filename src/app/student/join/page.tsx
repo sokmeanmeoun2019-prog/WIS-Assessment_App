@@ -102,10 +102,10 @@ export default function StudentJoin() {
       let foundSession = null;
       let foundAssessment = null;
 
-      // Check Cloud with a 3-second timeout to prevent 1-minute freezes
+      // Check Cloud with an 8-second timeout to prevent premature timeouts on mobile
       try {
-        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", code.toUpperCase())));
-        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+        const fetchSession = getDocs(query(collection(db, "sessions"), where("code", "==", code.trim().toUpperCase())));
+        const timeoutSession = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
         const qSnap: any = await Promise.race([fetchSession, timeoutSession]);
         
         if (!qSnap.empty) {
