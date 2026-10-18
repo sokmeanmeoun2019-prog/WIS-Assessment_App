@@ -272,9 +272,51 @@ export default function SubmissionsPage() {
           return 0;
         });
 
+        // Helper to re-attach offloaded HD questions and images from Firestore
+        const hydrateAssessmentsList = async (list: any[]) => {
+          for (const item of list) {
+            if (Array.isArray(item?.questions)) {
+              for (let i = 0; i < item.questions.length; i++) {
+                const q = item.questions[i];
+                if (q && q.__offloadedDocId) {
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                    if (res.ok) {
+                      const qDoc = await res.json();
+                      if (qDoc?.fields?.questionData?.stringValue) {
+                        item.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                      }
+                    }
+                  } catch (e) {}
+                }
+                const currentQ = item.questions[i];
+                if (currentQ?.imageUrl && typeof currentQ.imageUrl === 'string' && currentQ.imageUrl.startsWith('__CLOUD_IMG__:')) {
+                  const imgDocId = currentQ.imageUrl.replace('__CLOUD_IMG__:', '');
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+                    if (res.ok) {
+                      const imgDoc = await res.json();
+                      if (imgDoc?.fields?.dataUrl?.stringValue) {
+                        currentQ.imageUrl = imgDoc.fields.dataUrl.stringValue;
+                      }
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+          return list;
+        };
+
         // Optimistic UI: Immediately show what we have in local storage!
         if (storedAssessments.length > 0) setAssessments(storedAssessments);
         if (storedSubmissions.length > 0) setSubmissions(storedSubmissions);
+
+        // Ensure any local assessments with stubs are hydrated immediately
+        if (storedAssessments.length > 0) {
+          storedAssessments = await hydrateAssessmentsList(storedAssessments);
+          setAssessments([...storedAssessments]);
+        }
 
         try {
           // Fetch from Firebase (Background)
@@ -288,6 +330,7 @@ export default function SubmissionsPage() {
           }
 
           if (cloudAssessments.length > 0) {
+            cloudAssessments = await hydrateAssessmentsList(cloudAssessments);
             // merge
             const merged = [...storedAssessments];
             cloudAssessments.forEach(ca => {
@@ -296,7 +339,7 @@ export default function SubmissionsPage() {
             });
             storedAssessments = merged;
             localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments));
-            setAssessments(storedAssessments);
+            setAssessments([...storedAssessments]);
           }
 
           const subsSnap = await getDocs(collection(db, "submissions"));
@@ -554,7 +597,17 @@ export default function SubmissionsPage() {
 
                         let qNumCounter = 1;
                         return originalAssessment.questions.map((q: any, index: number) => {
-                          if (q.type === 'SECTION_BREAK') return null;
+                          if (q.type === 'SECTION_BREAK') {
+                            return (
+                              <div key={q.id} className="flex items-center justify-center pt-4 pb-2">
+                                <div className="h-px bg-indigo-200 flex-1"></div>
+                                <div className="px-5 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-sm uppercase tracking-wider rounded-full mx-4 shadow-sm">
+                                  {q.content || 'New Section'}
+                                </div>
+                                <div className="h-px bg-indigo-200 flex-1"></div>
+                              </div>
+                            );
+                          }
                           const currentQNum = qNumCounter++;
                           
                           const studentAnswer = sub.answers?.[q.id]
@@ -587,11 +640,16 @@ export default function SubmissionsPage() {
                             <div key={q.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                               <h4 className="font-bold text-slate-800 mb-2">Question {currentQNum}</h4>
                               {q.imageUrl && (
-                                <div className="mb-3">
-                                  <img src={q.imageUrl} alt="Question figure" className="max-w-full h-auto max-h-48 rounded-lg border border-slate-200" />
+                                <div className="mb-4">
+                                  <p className="text-xs text-slate-500 mb-1.5 uppercase font-bold tracking-wider">Question Problem / Figure:</p>
+                                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-center">
+                                    <img src={q.imageUrl} alt="Question figure" className="w-full max-w-3xl h-auto max-h-[550px] object-contain rounded-lg" />
+                                  </div>
                                 </div>
                               )}
-                              <div className="prose max-w-none text-slate-700 text-sm mb-4" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) || '<em>No question text</em>' }} />
+                              {(q.content || !q.imageUrl) && (
+                                <div className="prose max-w-none text-slate-700 text-sm mb-4" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) || '<em>No question text</em>' }} />
+                              )}
                               
                               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-800">
                                 

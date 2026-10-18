@@ -34,6 +34,38 @@ export default function StudentReviewPage() {
         let foundSub = null
         let foundAss = null
 
+        const hydrateSingleAssessment = async (ass: any) => {
+          if (!ass || !Array.isArray(ass.questions)) return ass;
+          for (let i = 0; i < ass.questions.length; i++) {
+            const q = ass.questions[i];
+            if (q && q.__offloadedDocId) {
+              try {
+                const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                if (res.ok) {
+                  const qDoc = await res.json();
+                  if (qDoc?.fields?.questionData?.stringValue) {
+                    ass.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                  }
+                }
+              } catch (e) {}
+            }
+            const currentQ = ass.questions[i];
+            if (currentQ?.imageUrl && typeof currentQ.imageUrl === 'string' && currentQ.imageUrl.startsWith('__CLOUD_IMG__:')) {
+              const imgDocId = currentQ.imageUrl.replace('__CLOUD_IMG__:', '');
+              try {
+                const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+                if (res.ok) {
+                  const imgDoc = await res.json();
+                  if (imgDoc?.fields?.dataUrl?.stringValue) {
+                    currentQ.imageUrl = imgDoc.fields.dataUrl.stringValue;
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+          return ass;
+        };
+
         // 1. Check local storage first (Optimistic)
         let storedSubs = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
         foundSub = storedSubs.find((s: any) => String(s.id) === String(subId))
@@ -42,7 +74,10 @@ export default function StudentReviewPage() {
         foundAss = storedAssessments.find((a: any) => String(a.id) === String(foundSub?.assessmentId))
         
         if (foundSub) setSubmission(foundSub);
-        if (foundAss) setAssessment(foundAss);
+        if (foundAss) {
+          foundAss = await hydrateSingleAssessment(foundAss);
+          setAssessment({ ...foundAss });
+        }
 
         // 2. Always fetch latest from Firebase to sync grades!
         try {
@@ -65,8 +100,8 @@ export default function StudentReviewPage() {
           try {
             const assDoc = await getDoc(doc(db, "assessments", foundSub.assessmentId))
             if (assDoc.exists()) {
-              foundAss = assDoc.data()
-              setAssessment(foundAss)
+              foundAss = await hydrateSingleAssessment(assDoc.data())
+              setAssessment({ ...foundAss })
               
               const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAss.id))
               if (idx >= 0) storedAssessments[idx] = foundAss; else storedAssessments.push(foundAss);
@@ -235,7 +270,14 @@ export default function StudentReviewPage() {
                     </span>
                   </h4>
                   
-                  <div className="prose max-w-none text-slate-700 text-sm mb-5" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) || '<em>No question text</em>' }} />
+                  {q.imageUrl && (
+                    <div className="mb-4 flex justify-center bg-white p-3 rounded-xl border border-slate-200">
+                      <img src={q.imageUrl} alt="Question figure" className="w-full max-w-3xl h-auto max-h-[550px] object-contain rounded-lg" />
+                    </div>
+                  )}
+                  {(q.content || !q.imageUrl) && (
+                    <div className="prose max-w-none text-slate-700 text-sm mb-5" dangerouslySetInnerHTML={{ __html: renderReadOnlyMath(q.content) || '<em>No question text</em>' }} />
+                  )}
                   
                   <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
                     {/* MCQ */}

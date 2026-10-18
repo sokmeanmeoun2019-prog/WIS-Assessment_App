@@ -38,14 +38,48 @@ export default function AssessmentsPage() {
           stored = stored.filter((a: any) => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId)
         }
 
+        const hydrateQuestionsInList = async (list: any[]) => {
+          for (const item of list) {
+            if (Array.isArray(item?.questions)) {
+              for (let i = 0; i < item.questions.length; i++) {
+                const q = item.questions[i];
+                if (q && q.__offloadedDocId) {
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                    if (res.ok) {
+                      const qDoc = await res.json();
+                      if (qDoc?.fields?.questionData?.stringValue) {
+                        item.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                      }
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+          return list;
+        };
+
         if (stored.length > 0) {
           setAssessments(stored);
+          stored = await hydrateQuestionsInList(stored);
+          setAssessments([...stored]);
         }
 
         // 1. Always push all local assessments to Firebase individually via direct HTTPS REST + SDK
         stored.forEach(async (localItem: any) => {
           try {
             const cleanLocal = await shrinkAssessmentImagesIfNeeded(localItem, 550000);
+            if (new Blob([JSON.stringify(cleanLocal)]).size > 550000 && Array.isArray(cleanLocal.questions)) {
+              for (let i = 0; i < cleanLocal.questions.length; i++) {
+                const q = cleanLocal.questions[i];
+                if (new Blob([JSON.stringify(q)]).size > 15000) {
+                  const qDocId = `${localItem.id}_q_${i}`;
+                  await saveDocWithRestFallback("assessment_questions", qDocId, { id: qDocId, questionData: JSON.stringify(q) }).catch(() => {});
+                  cleanLocal.questions[i] = { id: q.id, type: q.type, points: q.points, __offloadedDocId: qDocId };
+                }
+              }
+            }
             await saveDocWithRestFallback("assessments", String(localItem.id), cleanLocal);
           } catch (e) {
             console.warn("Could not auto-sync local assessment:", localItem.id, e);
@@ -62,24 +96,7 @@ export default function AssessmentsPage() {
           }
 
           // Re-attach any offloaded questions for cloudAssessments so local storage never gets overwritten with stubs!
-          for (const cloudItem of cloudAssessments) {
-            if (Array.isArray(cloudItem.questions)) {
-              for (let i = 0; i < cloudItem.questions.length; i++) {
-                const q = cloudItem.questions[i];
-                if (q && q.__offloadedDocId) {
-                  try {
-                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
-                    if (res.ok) {
-                      const qDoc = await res.json();
-                      if (qDoc?.fields?.questionData?.stringValue) {
-                        cloudItem.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
-                      }
-                    }
-                  } catch (e) {}
-                }
-              }
-            }
-          }
+          cloudAssessments = await hydrateQuestionsInList(cloudAssessments);
 
           const merged = [...stored];
           cloudAssessments.forEach(cloudItem => {
