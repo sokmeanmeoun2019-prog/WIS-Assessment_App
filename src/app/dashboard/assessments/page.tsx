@@ -207,43 +207,17 @@ export default function AssessmentsPage() {
     };
 
     let copy = JSON.parse(JSON.stringify(ass));
-    const steps = [
-      { dim: 850, q: 0.7 },
-      { dim: 650, q: 0.55 },
-      { dim: 450, q: 0.4 }
-    ];
-
-    for (const step of steps) {
-      if (new Blob([JSON.stringify(copy)]).size <= targetBytes) break;
-      if (copy.headerFormat?.logoUrl?.startsWith('data:image')) {
-        copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, Math.min(step.dim, 220), step.q);
-      }
-      if (Array.isArray(copy.questions)) {
-        for (let i = 0; i < copy.questions.length; i++) {
-          const q = copy.questions[i];
-          if (q.imageUrl?.startsWith('data:image')) {
-            q.imageUrl = await compressBase64(q.imageUrl, step.dim, step.q);
-          }
-          if (q.content?.includes('data:image')) {
-            q.content = await compressInlineHtmlImages(q.content, step.dim, step.q);
-          }
-          if (Array.isArray(q.options)) {
-            for (let j = 0; j < q.options.length; j++) {
-              if (q.options[j].text?.includes('data:image')) {
-                q.options[j].text = await compressInlineHtmlImages(q.options[j].text, step.dim, step.q);
-              }
-            }
-          }
-          if (Array.isArray(q.pairs)) {
-            for (let j = 0; j < q.pairs.length; j++) {
-              if (q.pairs[j].left?.includes('data:image')) {
-                q.pairs[j].left = await compressInlineHtmlImages(q.pairs[j].left, step.dim, step.q);
-              }
-              if (q.pairs[j].right?.includes('data:image')) {
-                q.pairs[j].right = await compressInlineHtmlImages(q.pairs[j].right, step.dim, step.q);
-              }
-            }
-          }
+    if (copy.headerFormat?.logoUrl?.startsWith('data:image') && copy.headerFormat.logoUrl.length > 150000) {
+      copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, 400, 0.85);
+    }
+    if (Array.isArray(copy.questions)) {
+      for (let i = 0; i < copy.questions.length; i++) {
+        const q = copy.questions[i];
+        if (q.imageUrl?.startsWith('data:image') && q.imageUrl.length > 600000) {
+          q.imageUrl = await compressBase64(q.imageUrl, 1600, 0.9);
+        }
+        if (q.content?.includes('data:image') && q.content.length > 600000) {
+          q.content = await compressInlineHtmlImages(q.content, 1600, 0.9);
         }
       }
     }

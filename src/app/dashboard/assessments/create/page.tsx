@@ -165,7 +165,7 @@ export default function CreateAssessment() {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        const max = 900
+        const max = 1600
         
         if (width > height) {
           if (width > max) {
@@ -183,8 +183,10 @@ export default function CreateAssessment() {
         canvas.height = height
         const ctx = canvas.getContext('2d')
         if (ctx) {
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, 0, width, height)
           ctx.drawImage(img, 0, 0, width, height)
-          const base64Url = canvas.toDataURL('image/jpeg', 0.75)
+          const base64Url = canvas.toDataURL('image/jpeg', 0.92)
           updateQuestion(questionId, 'imageUrl', base64Url)
         }
         setUploadingImageId(null)
@@ -412,48 +414,25 @@ export default function CreateAssessment() {
       return updated;
     };
 
-    // Ensure assessment is under 500KB before uploading
-    const steps = [
-      { dim: 850, q: 0.7 },
-      { dim: 650, q: 0.55 },
-      { dim: 450, q: 0.4 }
-    ];
-    for (const step of steps) {
-      if (new Blob([JSON.stringify(cleanAssessment)]).size <= 500000) break;
+    // Only lightly compress if an individual inline image is huge (>700KB), keeping 1600px HD clarity!
+    if (new Blob([JSON.stringify(cleanAssessment)]).size > 700000) {
       if (cleanAssessment.headerFormat?.logoUrl?.startsWith('data:image')) {
-        cleanAssessment.headerFormat.logoUrl = await compressB64(cleanAssessment.headerFormat.logoUrl, Math.min(step.dim, 220), step.q);
+        cleanAssessment.headerFormat.logoUrl = await compressB64(cleanAssessment.headerFormat.logoUrl, 400, 0.85);
       }
       if (Array.isArray(cleanAssessment.questions)) {
         for (let i = 0; i < cleanAssessment.questions.length; i++) {
           const q = cleanAssessment.questions[i];
-          if (q.imageUrl?.startsWith('data:image')) {
-            q.imageUrl = await compressB64(q.imageUrl, step.dim, step.q);
+          if (q.imageUrl?.startsWith('data:image') && q.imageUrl.length > 600000) {
+            q.imageUrl = await compressB64(q.imageUrl, 1600, 0.9);
           }
-          if (q.content?.includes('data:image')) {
-            q.content = await compressInlineHtmlImages(q.content, step.dim, step.q);
-          }
-          if (Array.isArray(q.options)) {
-            for (let j = 0; j < q.options.length; j++) {
-              if (q.options[j].text?.includes('data:image')) {
-                q.options[j].text = await compressInlineHtmlImages(q.options[j].text, step.dim, step.q);
-              }
-            }
-          }
-          if (Array.isArray(q.pairs)) {
-            for (let j = 0; j < q.pairs.length; j++) {
-              if (q.pairs[j].left?.includes('data:image')) {
-                q.pairs[j].left = await compressInlineHtmlImages(q.pairs[j].left, step.dim, step.q);
-              }
-              if (q.pairs[j].right?.includes('data:image')) {
-                q.pairs[j].right = await compressInlineHtmlImages(q.pairs[j].right, step.dim, step.q);
-              }
-            }
+          if (q.content?.includes('data:image') && q.content.length > 600000) {
+            q.content = await compressInlineHtmlImages(q.content, 1600, 0.9);
           }
         }
       }
     }
 
-    // If still >550KB, offload large questions into assessment_questions collection
+    // Offload questions with images into assessment_questions collection so each question gets its own 1MB limit and stays crystal clear!
     if (new Blob([JSON.stringify(cleanAssessment)]).size > 550000 && Array.isArray(cleanAssessment.questions)) {
       for (let i = 0; i < cleanAssessment.questions.length; i++) {
         const q = cleanAssessment.questions[i];
