@@ -87,6 +87,21 @@ export default function CreateAssessment() {
           setTimeLimit(existing.timeLimitMinutes ?? 30)
           if (existing.questions && existing.questions.length > 0) {
             setQuestions(existing.questions)
+            // If any questions were offloaded to cloud, fetch and re-attach them
+            Promise.all(existing.questions.map(async (q: any) => {
+              if (q && q.__offloadedDocId) {
+                try {
+                  const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                  if (res.ok) {
+                    const qDoc = await res.json();
+                    if (qDoc?.fields?.questionData?.stringValue) {
+                      return JSON.parse(qDoc.fields.questionData.stringValue);
+                    }
+                  }
+                } catch (e) {}
+              }
+              return q;
+            })).then(fullQs => setQuestions(fullQs));
           }
           if (existing.headerFormat) {
             setHeaderState({

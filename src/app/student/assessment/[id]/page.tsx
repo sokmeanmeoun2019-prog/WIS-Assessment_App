@@ -206,23 +206,61 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
         try {
           let found = null;
           
-          // Try Firebase first with a 3-second timeout
-          try {
-            const fetchPromise = getDoc(doc(db, "assessments", params.id as string));
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
-            const docSnap: any = await Promise.race([fetchPromise, timeoutPromise]);
-            
-            if (docSnap && docSnap.exists && docSnap.exists()) {
-              found = docSnap.data();
-            }
-          } catch (fbErr) {
-            console.warn("Firebase failed to load assessment, falling back to local storage", fbErr);
+          // 1. Check local storage first (StudentJoin already fetched and hydrated all offloaded questions here!)
+          const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
+          const localFound = stored.find((a: any) => String(a.id) === String(params.id))
+          if (localFound && Array.isArray(localFound.questions) && !localFound.questions.some((q: any) => q.__offloadedDocId)) {
+            found = localFound;
           }
 
-          // Fallback to local storage if Firebase failed or document didn't exist
+          // 2. Otherwise fetch from Firebase (with REST fallback)
           if (!found) {
-            const stored = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
-            found = stored.find((a: any) => String(a.id) === String(params.id))
+            try {
+              const fetchPromise = getDoc(doc(db, "assessments", params.id as string));
+              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
+              const docSnap: any = await Promise.race([fetchPromise, timeoutPromise]);
+              
+              if (docSnap && docSnap.exists && docSnap.exists()) {
+                found = docSnap.data();
+              }
+            } catch (fbErr) {
+              console.warn("Firebase failed to load assessment, falling back to local storage", fbErr);
+            }
+          }
+
+          if (!found && localFound) {
+            found = localFound;
+          }
+
+          // 3. Re-attach any offloaded questions or question images so Task images and content ALWAYS appear!
+          if (found && Array.isArray(found.questions)) {
+            for (let i = 0; i < found.questions.length; i++) {
+              let q = found.questions[i];
+              if (q.__offloadedDocId) {
+                try {
+                  const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                  if (res.ok) {
+                    const qDoc = await res.json();
+                    if (qDoc?.fields?.questionData?.stringValue) {
+                      found.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                      q = found.questions[i];
+                    }
+                  }
+                } catch (e) {}
+              }
+              if (typeof q.imageUrl === 'string' && q.imageUrl.startsWith('__CLOUD_IMG__:')) {
+                const imgDocId = q.imageUrl.replace('__CLOUD_IMG__:', '');
+                try {
+                  const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_images/${encodeURIComponent(imgDocId)}`);
+                  if (res.ok) {
+                    const imgDoc = await res.json();
+                    if (imgDoc?.fields?.imageUrl?.stringValue) {
+                      q.imageUrl = imgDoc.fields.imageUrl.stringValue;
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
           }
 
           if (found && found.questions) {

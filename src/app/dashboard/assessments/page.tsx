@@ -61,11 +61,31 @@ export default function AssessmentsPage() {
             cloudAssessments = cloudAssessments.filter(a => a.teacherId === auth.currentUser?.uid || a.teacherId === 'legacy' || !a.teacherId);
           }
 
+          // Re-attach any offloaded questions for cloudAssessments so local storage never gets overwritten with stubs!
+          for (const cloudItem of cloudAssessments) {
+            if (Array.isArray(cloudItem.questions)) {
+              for (let i = 0; i < cloudItem.questions.length; i++) {
+                const q = cloudItem.questions[i];
+                if (q && q.__offloadedDocId) {
+                  try {
+                    const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/assessment_questions/${encodeURIComponent(q.__offloadedDocId)}`);
+                    if (res.ok) {
+                      const qDoc = await res.json();
+                      if (qDoc?.fields?.questionData?.stringValue) {
+                        cloudItem.questions[i] = JSON.parse(qDoc.fields.questionData.stringValue);
+                      }
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          }
+
           const merged = [...stored];
           cloudAssessments.forEach(cloudItem => {
             const idx = merged.findIndex(a => a.id === cloudItem.id);
             if (idx >= 0) {
-              merged[idx] = cloudItem; // Cloud wins for published
+              merged[idx] = cloudItem;
             } else {
               merged.push(cloudItem);
             }
