@@ -78,7 +78,7 @@ export default function StudentJoin() {
         const foundSession = sessionsToSearch.find((s: any) => s.code.toUpperCase() === urlCode.toUpperCase())
         
         if (foundSession && foundSession.status !== 'CLOSED') {
-          const foundAssessment = storedAssessments.find((a: any) => a.id === foundSession.assessmentId) || JSON.parse(localStorage.getItem('demo_assessments') || '[]').find((a: any) => a.id === foundSession.assessmentId)
+          const foundAssessment = foundSession.assessmentSnapshot || storedAssessments.find((a: any) => a.id === foundSession.assessmentId) || JSON.parse(localStorage.getItem('demo_assessments') || '[]').find((a: any) => a.id === foundSession.assessmentId)
           if (foundAssessment) {
             setSession(foundSession)
             setAssessment(foundAssessment)
@@ -136,36 +136,52 @@ export default function StudentJoin() {
         return
       }
 
-      // Check Cloud for Assessment with an 8-second timeout
-      try {
-        const { doc, getDoc } = await import('firebase/firestore');
-        const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
-        const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
-        const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
-        
-        if (docSnap && docSnap.exists && docSnap.exists()) {
-          foundAssessment = docSnap.data();
-        } else {
-          const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
-          const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
-          if (!qSnap.empty) {
-            foundAssessment = qSnap.docs[0].data();
-          }
-        }
-      } catch(fbErr) {
-        console.warn("Firebase assessment fetch error:", fbErr);
+      // 1. First check if the assessment snapshot is already bundled directly inside the session!
+      if (foundSession.assessmentSnapshot) {
+        foundAssessment = foundSession.assessmentSnapshot;
       }
 
-      // Fallback local
+      // 2. Otherwise check Cloud for Assessment with an 8-second timeout
+      if (!foundAssessment) {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const fetchDoc = getDoc(doc(db, "assessments", String(foundSession.assessmentId)));
+          const timeoutAssessment = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000));
+          const docSnap: any = await Promise.race([fetchDoc, timeoutAssessment]);
+          
+          if (docSnap && docSnap.exists && docSnap.exists()) {
+            foundAssessment = docSnap.data();
+          } else {
+            const fetchAssessment = getDocs(query(collection(db, "assessments"), where("id", "==", foundSession.assessmentId)));
+            const qSnap: any = await Promise.race([fetchAssessment, timeoutAssessment]);
+            if (!qSnap.empty) {
+              foundAssessment = qSnap.docs[0].data();
+            }
+          }
+        } catch(fbErr) {
+          console.warn("Firebase assessment fetch error:", fbErr);
+        }
+      }
+
+      // 3. Fallback local
       if (!foundAssessment) {
         const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
-        foundAssessment = storedAssessments.find((a: any) => a.id === foundSession.assessmentId)
+        foundAssessment = storedAssessments.find((a: any) => String(a.id) === String(foundSession.assessmentId))
       }
 
       if (!foundAssessment) {
         setError("Assessment not found.")
         return
       }
+
+      // Cache the assessment locally on the student's browser so the taking page loads instantly!
+      try {
+        const storedAssessments = JSON.parse(localStorage.getItem('demo_assessments') || '[]')
+        const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAssessment.id))
+        if (idx >= 0) storedAssessments[idx] = foundAssessment;
+        else storedAssessments.push(foundAssessment);
+        localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments))
+      } catch (e) {}
 
       setSession(foundSession)
       setAssessment(foundAssessment)

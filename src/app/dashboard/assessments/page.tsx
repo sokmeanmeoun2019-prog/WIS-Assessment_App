@@ -162,8 +162,8 @@ export default function AssessmentsPage() {
 
   const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase()
 
-  const shrinkAssessmentImagesIfNeeded = async (ass: any): Promise<any> => {
-    const compressBase64 = (b64: string, maxDim = 450, quality = 0.5): Promise<string> => {
+  const shrinkAssessmentImagesIfNeeded = async (ass: any, targetBytes = 750000): Promise<any> => {
+    const compressBase64 = (b64: string, maxDim: number, quality: number): Promise<string> => {
       return new Promise((resolve) => {
         if (!b64 || !b64.startsWith('data:image')) return resolve(b64);
         const img = new Image();
@@ -186,40 +186,46 @@ export default function AssessmentsPage() {
       });
     };
 
-    const copy = JSON.parse(JSON.stringify(ass));
-    if (copy.headerFormat?.logoUrl?.startsWith('data:image')) {
-      copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, 300, 0.7);
-    }
-    if (Array.isArray(copy.questions)) {
-      for (let i = 0; i < copy.questions.length; i++) {
-        if (copy.questions[i].imageUrl?.startsWith('data:image')) {
-          copy.questions[i].imageUrl = await compressBase64(copy.questions[i].imageUrl, 500, 0.5);
+    let copy = JSON.parse(JSON.stringify(ass));
+    const steps = [
+      { dim: 500, q: 0.5 },
+      { dim: 350, q: 0.4 },
+      { dim: 250, q: 0.3 }
+    ];
+
+    for (const step of steps) {
+      if (JSON.stringify(copy).length <= targetBytes) break;
+      if (copy.headerFormat?.logoUrl?.startsWith('data:image')) {
+        copy.headerFormat.logoUrl = await compressBase64(copy.headerFormat.logoUrl, Math.min(step.dim, 250), step.q);
+      }
+      if (Array.isArray(copy.questions)) {
+        for (let i = 0; i < copy.questions.length; i++) {
+          if (copy.questions[i].imageUrl?.startsWith('data:image')) {
+            copy.questions[i].imageUrl = await compressBase64(copy.questions[i].imageUrl, step.dim, step.q);
+          }
         }
       }
     }
     return copy;
   }
 
-  const syncAssessmentToCloud = async (assessmentId: string) => {
+  const syncAssessmentToCloud = async (assessmentId: string): Promise<any> => {
     try {
       const targetAss = assessments.find(a => String(a.id) === String(assessmentId));
       if (targetAss) {
-        let cleanAss = JSON.parse(JSON.stringify(targetAss));
-        try {
-          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
-        } catch (err) {
-          // Often fails if base64 images exceed Firestore 1MB limit — compress & retry!
-          cleanAss = await shrinkAssessmentImagesIfNeeded(cleanAss);
-          await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
-        }
+        let cleanAss = await shrinkAssessmentImagesIfNeeded(targetAss, 750000);
+        await setDoc(doc(db, "assessments", String(assessmentId)), cleanAss);
+        return cleanAss;
       }
     } catch (e) {
       console.error("Failed to sync assessment to cloud", e);
     }
+    return null;
   }
 
   const handleAddSession = async (assessmentId: string) => {
-    const newSession = {
+    const cleanAss = await syncAssessmentToCloud(assessmentId);
+    const newSession: any = {
       id: `sess-${Date.now()}`,
       assessmentId,
       className: 'New Class',
@@ -228,15 +234,21 @@ export default function AssessmentsPage() {
       createdAt: new Date().toISOString(),
       deadline: ''
     }
+    if (cleanAss) {
+      newSession.assessmentSnapshot = cleanAss;
+    }
     const nextSessions = [...sessions, newSession];
     setSessions(nextSessions);
     localStorage.setItem('demo_sessions', JSON.stringify(nextSessions));
     
-    // push both session and assessment to cloud
+    // push session (with embedded assessment backup) to cloud
     try {
-      await syncAssessmentToCloud(assessmentId);
       await setDoc(doc(db, "sessions", newSession.id), newSession);
-    } catch(e) {}
+    } catch(e) {
+      // If embedding snapshot made session too big, save session without snapshot
+      const { assessmentSnapshot, ...slimSession } = newSession;
+      await setDoc(doc(db, "sessions", newSession.id), slimSession).catch(() => {});
+    }
   }
 
   const handleUpdateSession = async (sessionId: string, updates: any) => {
@@ -247,6 +259,7 @@ export default function AssessmentsPage() {
     try {
       const targetSession = nextSessions.find(s => s.id === sessionId);
       if (targetSession) {
+        await syncAssessmentToCloud(targetSession.assessmentId);
         await setDoc(doc(db, "sessions", targetSession.id), targetSession);
       }
     } catch(e) {}
@@ -254,19 +267,29 @@ export default function AssessmentsPage() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
-  const copyFullMessage = (session: any, assessment: any) => {
+  const copyFullMessage = async (session: any, assessment: any) => {
     const directLink = `${origin}/student/join?code=${session.code}`
     const msg = `${assessment.title}\n\nClick here to start: ${directLink}\n\nInstructions:\n1. Open the link.\n2. Enter your Full Name & Student ID.\n3. Complete the assessment before the time expires.`
     navigator.clipboard.writeText(msg)
     setCopiedCode(session.code)
     setTimeout(() => setCopiedCode(null), 2000)
+
+    const cleanAss = await syncAssessmentToCloud(session.assessmentId)
+    if (cleanAss) {
+      setDoc(doc(db, "sessions", session.id), { ...session, assessmentSnapshot: cleanAss }).catch(() => {})
+    }
   }
 
-  const copyLinkOnly = (session: any) => {
+  const copyLinkOnly = async (session: any) => {
     const directLink = `${origin}/student/join?code=${session.code}`
     navigator.clipboard.writeText(directLink)
     setCopiedLink(session.id)
     setTimeout(() => setCopiedLink(null), 2000)
+
+    const cleanAss = await syncAssessmentToCloud(session.assessmentId)
+    if (cleanAss) {
+      setDoc(doc(db, "sessions", session.id), { ...session, assessmentSnapshot: cleanAss }).catch(() => {})
+    }
   }
 
   const showToast = (msg: string) => {
@@ -297,14 +320,17 @@ export default function AssessmentsPage() {
 
   const handleQuickShare = async (assessmentId: string) => {
     // Always ensure the assessment itself is synced to Firebase when sharing!
-    syncAssessmentToCloud(assessmentId);
+    const cleanAss = await syncAssessmentToCloud(assessmentId);
 
     const existingSession = sessions.find(s => s.assessmentId === assessmentId && s.status === 'ACTIVE')
     if (existingSession) {
+      if (cleanAss) {
+        await setDoc(doc(db, "sessions", existingSession.id), { ...existingSession, assessmentSnapshot: cleanAss }).catch(() => {});
+      }
       copyLinkOnly(existingSession)
       showToast("Direct assessment link copied to clipboard!")
     } else {
-      const newSession = {
+      const newSession: any = {
         id: `sess-${Date.now()}`,
         assessmentId,
         className: 'General Class',
@@ -313,6 +339,9 @@ export default function AssessmentsPage() {
         createdAt: new Date().toISOString(),
         deadline: ''
       }
+      if (cleanAss) {
+        newSession.assessmentSnapshot = cleanAss;
+      }
       
       const nextSessions = [...sessions, newSession];
       setSessions(nextSessions);
@@ -320,8 +349,11 @@ export default function AssessmentsPage() {
       
       // Push to cloud instantly so students can access it
       try {
-        setDoc(doc(db, "sessions", newSession.id), newSession);
-      } catch(e) {}
+        await setDoc(doc(db, "sessions", newSession.id), newSession);
+      } catch(e) {
+        const { assessmentSnapshot, ...slimSession } = newSession;
+        await setDoc(doc(db, "sessions", newSession.id), slimSession).catch(() => {});
+      }
       
       copyLinkOnly(newSession)
       showToast("New session created. Direct assessment link copied to clipboard!")
