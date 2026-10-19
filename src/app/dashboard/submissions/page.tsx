@@ -256,7 +256,7 @@ export default function SubmissionsPage() {
   const [filterDate, setFilterDate] = useState<string>('')
   
   // Annotation state
-  const [annotatingImage, setAnnotatingImage] = useState<{ subId: string, qId: string, url: string } | null>(null)
+  const [annotatingImage, setAnnotatingImage] = useState<{ subId: string, qId: string, imgIndex?: number, url: string } | null>(null)
   
   // Load from localStorage
   useEffect(() => {
@@ -359,6 +359,49 @@ export default function SubmissionsPage() {
           }
 
           if (cloudSubs.length > 0) {
+            for (const cs of cloudSubs) {
+              if (cs?.answers && typeof cs.answers === 'object') {
+                await Promise.all(
+                  Object.keys(cs.answers).map(async (qId) => {
+                    const ans = cs.answers[qId];
+                    if (ans && typeof ans === 'object') {
+                      if (Array.isArray(ans.images)) {
+                        ans.images = await Promise.all(
+                          ans.images.map(async (imgStr: string) => {
+                            if (typeof imgStr === 'string' && imgStr.startsWith('__SUB_IMG__:')) {
+                              const imgDocId = imgStr.replace('__SUB_IMG__:', '');
+                              try {
+                                const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`);
+                                if (res.ok) {
+                                  const imgDoc = await res.json();
+                                  if (imgDoc?.fields?.imageUrl?.stringValue) {
+                                    return imgDoc.fields.imageUrl.stringValue;
+                                  }
+                                }
+                              } catch (e) {}
+                            }
+                            return imgStr;
+                          })
+                        );
+                        ans.image = ans.images[0] || ans.image;
+                      } else if (typeof ans.image === 'string' && ans.image.startsWith('__SUB_IMG__:')) {
+                        const imgDocId = ans.image.replace('__SUB_IMG__:', '');
+                        try {
+                          const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`);
+                          if (res.ok) {
+                            const imgDoc = await res.json();
+                            if (imgDoc?.fields?.imageUrl?.stringValue) {
+                              ans.image = imgDoc.fields.imageUrl.stringValue;
+                            }
+                          }
+                        } catch (e) {}
+                      }
+                    }
+                  })
+                );
+              }
+            }
+
             const mergedSub = [...storedSubmissions];
             cloudSubs.forEach(cs => {
               const idx = mergedSub.findIndex(s => String(s.id) === String(cs.id));
@@ -374,8 +417,10 @@ export default function SubmissionsPage() {
               return 0;
             });
             
-            localStorage.setItem('demo_submissions', JSON.stringify(storedSubmissions));
-            setSubmissions(storedSubmissions);
+            try {
+              localStorage.setItem('demo_submissions', JSON.stringify(storedSubmissions));
+            } catch (e) {}
+            setSubmissions([...storedSubmissions]);
           }
         } catch (fbError) {
           console.warn("Firebase fetch error", fbError);
@@ -405,13 +450,21 @@ export default function SubmissionsPage() {
 
   const handleSaveAnnotation = async (dataUrl: string) => {
     if (!annotatingImage) return;
-    const { subId, qId } = annotatingImage;
+    const { subId, qId, imgIndex = 0 } = annotatingImage;
     
     const updated = submissions.map((s: any) => {
       if (s.id === subId) {
         const nextAnswers = { ...s.answers }
         if (nextAnswers[qId]) {
-          nextAnswers[qId] = { ...nextAnswers[qId], image: dataUrl }
+          const existingImgs: string[] = Array.isArray(nextAnswers[qId].images) && nextAnswers[qId].images.length > 0
+            ? [...nextAnswers[qId].images]
+            : (nextAnswers[qId].image ? [nextAnswers[qId].image] : []);
+          existingImgs[imgIndex] = dataUrl;
+          nextAnswers[qId] = {
+            ...nextAnswers[qId],
+            images: existingImgs,
+            image: existingImgs[0] || dataUrl
+          };
         }
         return { ...s, answers: nextAnswers }
       }
@@ -420,11 +473,35 @@ export default function SubmissionsPage() {
     
     setSubmissions(updated);
     if (!subId.startsWith('mock-')) {
-      localStorage.setItem('demo_submissions', JSON.stringify(updated));
+      try {
+        localStorage.setItem('demo_submissions', JSON.stringify(updated));
+      } catch (e) {}
       const targetSub = updated.find(s => s.id === subId);
       if (targetSub) {
         try {
-          setDoc(doc(db, "submissions", subId), targetSub);
+          const cloudTarget = JSON.parse(JSON.stringify(targetSub));
+          if (new Blob([JSON.stringify(cloudTarget)]).size > 550000 && cloudTarget.answers) {
+            for (const key of Object.keys(cloudTarget.answers)) {
+              const ans = cloudTarget.answers[key];
+              if (ans && typeof ans === 'object') {
+                const imgs: string[] = Array.isArray(ans.images) ? ans.images : (ans.image ? [ans.image] : []);
+                for (let idx = 0; idx < imgs.length; idx++) {
+                  if (typeof imgs[idx] === 'string' && imgs[idx].length > 20000) {
+                    const imgDocId = `${subId}_${key}_${idx}`;
+                    await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ fields: { id: { stringValue: imgDocId }, imageUrl: { stringValue: imgs[idx] } } })
+                    }).catch(() => {});
+                    imgs[idx] = `__SUB_IMG__:${imgDocId}`;
+                  }
+                }
+                ans.images = imgs;
+                ans.image = imgs[0] || null;
+              }
+            }
+          }
+          setDoc(doc(db, "submissions", subId), cloudTarget);
         } catch (err) {
           console.error("Firebase update error", err);
         }
@@ -490,15 +567,41 @@ export default function SubmissionsPage() {
 
     setSubmissions(updated)
     if (!id.startsWith('mock-')) {
-      localStorage.setItem('demo_submissions', JSON.stringify(updated))
+      try {
+        localStorage.setItem('demo_submissions', JSON.stringify(updated))
+      } catch (e) {}
       // Push to Firebase
       const targetSub = updated.find(s => s.id === id);
       if (targetSub) {
-        try {
-          setDoc(doc(db, "submissions", id), targetSub);
-        } catch (fbErr) {
-          console.error("Firebase update error", fbErr);
-        }
+        (async () => {
+          try {
+            const cloudTarget = JSON.parse(JSON.stringify(targetSub));
+            if (new Blob([JSON.stringify(cloudTarget)]).size > 550000 && cloudTarget.answers) {
+              for (const key of Object.keys(cloudTarget.answers)) {
+                const ans = cloudTarget.answers[key];
+                if (ans && typeof ans === 'object') {
+                  const imgs: string[] = Array.isArray(ans.images) ? ans.images : (ans.image ? [ans.image] : []);
+                  for (let idx = 0; idx < imgs.length; idx++) {
+                    if (typeof imgs[idx] === 'string' && imgs[idx].length > 20000) {
+                      const imgDocId = `${id}_${key}_${idx}`;
+                      await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fields: { id: { stringValue: imgDocId }, imageUrl: { stringValue: imgs[idx] } } })
+                      }).catch(() => {});
+                      imgs[idx] = `__SUB_IMG__:${imgDocId}`;
+                    }
+                  }
+                  ans.images = imgs;
+                  ans.image = imgs[0] || null;
+                }
+              }
+            }
+            await setDoc(doc(db, "submissions", id), cloudTarget);
+          } catch (fbErr) {
+            console.error("Firebase update error", fbErr);
+          }
+        })();
       }
     }
     setExpandedId(null)
@@ -819,22 +922,34 @@ export default function SubmissionsPage() {
                                       )}
                                     </div>
                                     
-                                    {studentAnswer?.image && (
-                                      <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                          <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Uploaded Worksheet:</p>
-                                          <button 
-                                            onClick={() => setAnnotatingImage({ subId: sub.id, qId: q.id, url: studentAnswer.image })}
-                                            className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center bg-indigo-50 px-2 py-1 rounded-md"
-                                          >
-                                            <Pencil className="w-3 h-3 mr-1" /> Annotate Image
-                                          </button>
+                                    {(() => {
+                                      const studentImgs: string[] = Array.isArray(studentAnswer?.images) && studentAnswer.images.length > 0
+                                        ? studentAnswer.images
+                                        : (studentAnswer?.image ? [studentAnswer.image] : []);
+                                      if (studentImgs.length === 0) return null;
+                                      return (
+                                        <div className="space-y-4">
+                                          {studentImgs.map((imgSrc: string, imgIdx: number) => (
+                                            <div key={imgIdx}>
+                                              <div className="flex items-center justify-between mb-2">
+                                                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">
+                                                  Uploaded Worksheet {studentImgs.length > 1 ? `(Picture ${imgIdx + 1} of ${studentImgs.length})` : ''}:
+                                                </p>
+                                                <button 
+                                                  onClick={() => setAnnotatingImage({ subId: sub.id, qId: q.id, imgIndex: imgIdx, url: imgSrc })}
+                                                  className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center bg-indigo-50 px-2 py-1 rounded-md"
+                                                >
+                                                  <Pencil className="w-3 h-3 mr-1" /> Annotate Image {studentImgs.length > 1 ? `#${imgIdx + 1}` : ''}
+                                                </button>
+                                              </div>
+                                              <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden">
+                                                <img src={imgSrc} alt={`Student Worksheet ${imgIdx + 1}`} className="max-w-full max-h-96 object-contain rounded-md" />
+                                              </div>
+                                            </div>
+                                          ))}
                                         </div>
-                                        <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden">
-                                          <img src={studentAnswer.image} alt="Student Worksheet" className="max-w-full max-h-96 object-contain rounded-md" />
-                                        </div>
-                                      </div>
-                                    )}
+                                      );
+                                    })()}
                                   </div>
                                 )}
 

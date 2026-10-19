@@ -84,12 +84,54 @@ export default function StudentReviewPage() {
           const subDoc = await getDoc(doc(db, "submissions", subId))
           if (subDoc.exists()) {
             foundSub = subDoc.data()
-            setSubmission(foundSub)
+            if (foundSub?.answers && typeof foundSub.answers === 'object') {
+              await Promise.all(
+                Object.keys(foundSub.answers).map(async (qId) => {
+                  const ans = foundSub.answers[qId];
+                  if (ans && typeof ans === 'object') {
+                    if (Array.isArray(ans.images)) {
+                      ans.images = await Promise.all(
+                        ans.images.map(async (imgStr: string) => {
+                          if (typeof imgStr === 'string' && imgStr.startsWith('__SUB_IMG__:')) {
+                            const imgDocId = imgStr.replace('__SUB_IMG__:', '');
+                            try {
+                              const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`);
+                              if (res.ok) {
+                                const imgDoc = await res.json();
+                                if (imgDoc?.fields?.imageUrl?.stringValue) {
+                                  return imgDoc.fields.imageUrl.stringValue;
+                                }
+                              }
+                            } catch (e) {}
+                          }
+                          return imgStr;
+                        })
+                      );
+                      ans.image = ans.images[0] || ans.image;
+                    } else if (typeof ans.image === 'string' && ans.image.startsWith('__SUB_IMG__:')) {
+                      const imgDocId = ans.image.replace('__SUB_IMG__:', '');
+                      try {
+                        const res = await fetch(`https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/submission_images/${encodeURIComponent(imgDocId)}`);
+                        if (res.ok) {
+                          const imgDoc = await res.json();
+                          if (imgDoc?.fields?.imageUrl?.stringValue) {
+                            ans.image = imgDoc.fields.imageUrl.stringValue;
+                          }
+                        }
+                      } catch (e) {}
+                    }
+                  }
+                })
+              );
+            }
+            setSubmission({ ...foundSub })
             
             // Update local storage so it persists
-            const idx = storedSubs.findIndex((s: any) => String(s.id) === String(subId))
-            if (idx >= 0) storedSubs[idx] = foundSub; else storedSubs.push(foundSub);
-            localStorage.setItem('demo_submissions', JSON.stringify(storedSubs))
+            try {
+              const idx = storedSubs.findIndex((s: any) => String(s.id) === String(subId))
+              if (idx >= 0) storedSubs[idx] = foundSub; else storedSubs.push(foundSub);
+              localStorage.setItem('demo_submissions', JSON.stringify(storedSubs))
+            } catch (e) {}
           }
         } catch(e) {
           console.error("Firebase sub fetch error", e)
@@ -103,9 +145,11 @@ export default function StudentReviewPage() {
               foundAss = await hydrateSingleAssessment(assDoc.data())
               setAssessment({ ...foundAss })
               
-              const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAss.id))
-              if (idx >= 0) storedAssessments[idx] = foundAss; else storedAssessments.push(foundAss);
-              localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments))
+              try {
+                const idx = storedAssessments.findIndex((a: any) => String(a.id) === String(foundAss.id))
+                if (idx >= 0) storedAssessments[idx] = foundAss; else storedAssessments.push(foundAss);
+                localStorage.setItem('demo_assessments', JSON.stringify(storedAssessments))
+              } catch (e) {}
             }
           } catch(e) {
             console.error("Firebase ass fetch error", e)
@@ -327,14 +371,25 @@ export default function StudentReviewPage() {
                          ) : (
                            <div className="text-slate-400 italic">No typed solution provided.</div>
                          )}
-                         {studentAnswer?.image && (
-                           <div className="mt-4">
-                             <p className="text-xs text-slate-500 mb-2 uppercase font-bold tracking-wider">Your Worksheet (with Teacher's marks):</p>
-                             <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden">
-                               <img src={studentAnswer.image} alt="Graded Worksheet" className="max-w-full max-h-96 object-contain rounded-md" />
+                         {(() => {
+                           const studentImgs: string[] = Array.isArray(studentAnswer?.images) && studentAnswer.images.length > 0
+                             ? studentAnswer.images
+                             : (studentAnswer?.image ? [studentAnswer.image] : []);
+                           if (studentImgs.length === 0) return null;
+                           return (
+                             <div className="mt-4 space-y-4">
+                               <p className="text-xs text-slate-500 mb-2 uppercase font-bold tracking-wider">Your Worksheet (with Teacher's marks):</p>
+                               {studentImgs.map((imgSrc: string, imgIdx: number) => (
+                                 <div key={imgIdx} className="bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-hidden mr-2">
+                                   {studentImgs.length > 1 && (
+                                     <span className="block text-xs font-bold text-indigo-600 mb-1">Picture {imgIdx + 1}</span>
+                                   )}
+                                   <img src={imgSrc} alt={`Graded Worksheet ${imgIdx + 1}`} className="max-w-full max-h-96 object-contain rounded-md" />
+                                 </div>
+                               ))}
                              </div>
-                           </div>
-                         )}
+                           );
+                         })()}
                          <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-indigo-600 font-medium italic">
                            Note: Typed solutions and worksheets are graded manually by your teacher.
                          </div>

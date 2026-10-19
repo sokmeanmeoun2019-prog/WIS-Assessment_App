@@ -321,6 +321,112 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
     setAnswers(prev => ({ ...prev, [qId]: val }))
   }
 
+  const compressImageDataUrl = (dataUrl: string, maxDim = 1300, quality = 0.80): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!dataUrl || !dataUrl.startsWith('data:image')) return resolve(dataUrl);
+      const timeout = setTimeout(() => resolve(dataUrl), 4000);
+      const img = new window.Image();
+      img.onload = () => {
+        clearTimeout(timeout);
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        } else {
+          if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => { clearTimeout(timeout); resolve(dataUrl); };
+      img.src = dataUrl;
+    });
+  };
+
+  const compressFileToDataUrl = (file: File, maxDim = 1300, quality = 0.80): Promise<string> => {
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new window.Image();
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        } else {
+          if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve('');
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const raw = String(reader.result || '');
+          const compressed = await compressImageDataUrl(raw, maxDim, quality);
+          resolve(compressed);
+        };
+        reader.readAsDataURL(file);
+      };
+      img.src = objectUrl;
+    });
+  };
+
+  const toFirestoreVal = (val: any): any => {
+    if (val === null || val === undefined) return { nullValue: null };
+    if (typeof val === 'boolean') return { booleanValue: val };
+    if (typeof val === 'number') {
+      return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+    }
+    if (typeof val === 'string') return { stringValue: val };
+    if (Array.isArray(val)) return { arrayValue: { values: val.map(toFirestoreVal) } };
+    if (typeof val === 'object') {
+      const fields: any = {};
+      for (const [k, v] of Object.entries(val)) {
+        if (v !== undefined) fields[k] = toFirestoreVal(v);
+      }
+      return { mapValue: { fields } };
+    }
+    return { stringValue: String(val) };
+  };
+
+  const saveFirestoreDocRest = async (colName: string, docId: string, data: any) => {
+    const fields: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (v !== undefined) fields[k] = toFirestoreVal(v);
+    }
+    const res = await fetch(
+      `https://firestore.googleapis.com/v1/projects/wis-assessment/databases/(default)/documents/${colName}/${encodeURIComponent(docId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields })
+      }
+    );
+    if (!res.ok) throw new Error(await res.text());
+  };
+
   const handleSubmit = async (isAutoExpire: boolean = false) => {
     // Strict Deadline Enforcement
     if (studentSession?.deadline && new Date() > new Date(studentSession.deadline)) {
@@ -348,37 +454,98 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
     setSubmitted('saving')
     
     try {
-      const newSubmission = {
-        id: `sub-${Date.now()}`,
+      const subId = `sub-${Date.now()}`;
+      const processedAnswers: any = JSON.parse(JSON.stringify(answers || {}));
+
+      // 1. Compress any large camera photos in answers (both single image and multi-image arrays)
+      for (const qId of Object.keys(processedAnswers)) {
+        const ans = processedAnswers[qId];
+        if (ans && typeof ans === 'object') {
+          let imgs: string[] = Array.isArray(ans.images) ? ans.images : (ans.image ? [ans.image] : []);
+          if (imgs.length > 0) {
+            imgs = await Promise.all(
+              imgs.map(async (imgStr: string) => {
+                if (typeof imgStr === 'string' && imgStr.startsWith('data:image') && imgStr.length > 220000) {
+                  return await compressImageDataUrl(imgStr, 1200, 0.78);
+                }
+                return imgStr;
+              })
+            );
+            ans.images = imgs;
+            ans.image = imgs[0] || null;
+          }
+        }
+      }
+
+      const fullLocalSubmission = {
+        id: subId,
         assessmentId: assessment.id,
         assessmentTitle: assessment.title,
         sessionId: studentSession.sessionId,
         studentId: studentSession.studentId,
         studentName: studentSession.studentName,
         className: studentSession.className,
-        answers,
+        answers: JSON.parse(JSON.stringify(processedAnswers)),
         submittedAt: new Date().toISOString(),
         status: 'Needs Grading'
+      };
+
+      // 2. Save to localStorage safely (NEVER let iPad Safari 5MB QuotaExceededError crash the submission!)
+      try {
+        const existing = JSON.parse(localStorage.getItem('demo_submissions') || '[]');
+        localStorage.setItem('demo_submissions', JSON.stringify([fullLocalSubmission, ...existing.slice(0, 15)]));
+      } catch (quotaErr) {
+        try {
+          localStorage.setItem('demo_submissions', JSON.stringify([fullLocalSubmission]));
+        } catch (e2) {
+          console.warn("iPad localStorage full, skipping local cache and saving directly to cloud.");
+        }
       }
-      
-      const existing = JSON.parse(localStorage.getItem('demo_submissions') || '[]')
-      localStorage.setItem('demo_submissions', JSON.stringify([newSubmission, ...existing]))
-      
-      // FIRE AND FORGET: Save to Firebase in the background so the UI doesn't freeze.
-      // Because we use Next.js router.push() below, the page doesn't unload and this will safely finish in the background!
-      setDoc(doc(db, "submissions", newSubmission.id), newSubmission).catch(fbErr => {
-        console.warn("Firebase save warning (saved locally instead):", fbErr);
-      });
+
+      // 3. Prepare Cloud Submission: if multiple photos make it >550KB, offload each photo to submission_images
+      const cloudSubmission = JSON.parse(JSON.stringify(fullLocalSubmission));
+      if (new Blob([JSON.stringify(cloudSubmission)]).size > 550000) {
+        for (const qId of Object.keys(cloudSubmission.answers || {})) {
+          const ans = cloudSubmission.answers[qId];
+          if (ans && typeof ans === 'object') {
+            const imgs: string[] = Array.isArray(ans.images) ? ans.images : (ans.image ? [ans.image] : []);
+            if (imgs.length > 0) {
+              for (let idx = 0; idx < imgs.length; idx++) {
+                if (typeof imgs[idx] === 'string' && imgs[idx].length > 20000) {
+                  const imgDocId = `${subId}_${qId}_${idx}`;
+                  try {
+                    await saveFirestoreDocRest("submission_images", imgDocId, { id: imgDocId, imageUrl: imgs[idx] });
+                    imgs[idx] = `__SUB_IMG__:${imgDocId}`;
+                  } catch (offloadErr) {
+                    imgs[idx] = await compressImageDataUrl(imgs[idx], 800, 0.65);
+                  }
+                }
+              }
+              ans.images = imgs;
+              ans.image = imgs[0] || null;
+            }
+          }
+        }
+      }
+
+      // 4. Save to Firebase Cloud via BOTH Direct HTTPS REST + SDK (wait up to 4s so iPad doesn't cancel request)
+      await Promise.race([
+        Promise.all([
+          saveFirestoreDocRest("submissions", subId, cloudSubmission).catch(e => console.warn("REST sub save warn:", e)),
+          setDoc(doc(db, "submissions", subId), cloudSubmission).catch(e => console.warn("SDK sub save warn:", e))
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 4000))
+      ]);
 
       // Clear the active session
-      localStorage.removeItem('demo_active_student_session')
+      try { localStorage.removeItem('demo_active_student_session'); } catch (e) {}
       
-      // Navigate immediately using Next.js router (keeps background requests alive)
-      router.push(`/student/results/${newSubmission.id}`)
+      // Navigate to results page
+      router.push(`/student/results/${subId}`)
     } catch (err) {
       console.error(err)
       alert("Something went wrong saving your submission.")
-      router.push('/student/join')
+      setSubmitted(false)
     }
   }
 
@@ -719,40 +886,78 @@ export default function AssessmentTake({ params }: { params: { id: string } }) {
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Upload handwritten worksheet:</h4>
-              {answers[q.id]?.image ? (
-                <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col items-center p-2">
-                   <img src={answers[q.id].image} alt="Uploaded worksheet" className="max-h-64 object-contain" />
-                   <button 
-                     onClick={() => handleAnswer(q.id, { ...answers[q.id], image: null })}
-                     className="absolute top-2 right-2 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 transition-colors shadow-sm"
-                     title="Remove image"
-                   >
-                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                   </button>
-                </div>
-              ) : (
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors relative overflow-hidden group">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="w-8 h-8 text-slate-400 mb-2 group-hover:text-indigo-500 transition-colors" />
-                    <p className="mb-2 text-sm text-slate-500 font-medium group-hover:text-indigo-600 transition-colors">Click to upload image (JPG, PNG)</p>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Upload handwritten worksheet (you can upload multiple pictures):</h4>
+              {(() => {
+                const currentImages: string[] = Array.isArray(answers[q.id]?.images)
+                  ? answers[q.id].images
+                  : (answers[q.id]?.image ? [answers[q.id].image] : []);
+
+                return (
+                  <div className="space-y-4">
+                    {currentImages.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {currentImages.map((imgSrc: string, imgIdx: number) => (
+                          <div key={imgIdx} className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col items-center p-2">
+                            <span className="self-start text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md mb-2">
+                              Picture {imgIdx + 1}
+                            </span>
+                            <img src={imgSrc} alt={`Uploaded worksheet ${imgIdx + 1}`} className="max-h-64 object-contain rounded-lg" />
+                            <button 
+                              onClick={() => {
+                                const nextImages = currentImages.filter((_, i) => i !== imgIdx);
+                                handleAnswer(q.id, {
+                                  ...answers[q.id],
+                                  images: nextImages,
+                                  image: nextImages[0] || null
+                                });
+                              }}
+                              className="absolute top-2 right-2 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 transition-colors shadow-sm"
+                              title="Remove picture"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-indigo-50/40 hover:border-indigo-300 transition-colors relative overflow-hidden group">
+                      <div className="flex flex-col items-center justify-center py-4">
+                        <Upload className="w-7 h-7 text-slate-400 mb-1.5 group-hover:text-indigo-500 transition-colors" />
+                        <p className="text-sm text-slate-600 font-semibold group-hover:text-indigo-600 transition-colors">
+                          {currentImages.length > 0
+                            ? '+ Add Another Picture / Take Another Photo'
+                            : 'Click to take a photo or upload pictures (Multiple allowed)'}
+                        </p>
+                      </div>
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        multiple
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (files.length === 0) return;
+                          const newCompressedList: string[] = [];
+                          for (const file of files) {
+                            const compressed = await compressFileToDataUrl(file, 1300, 0.80);
+                            if (compressed) newCompressedList.push(compressed);
+                          }
+                          if (newCompressedList.length > 0) {
+                            const updatedImages = [...currentImages, ...newCompressedList];
+                            handleAnswer(q.id, {
+                              ...answers[q.id],
+                              images: updatedImages,
+                              image: updatedImages[0] || null
+                            });
+                          }
+                          e.target.value = '';
+                        }} 
+                      />
+                    </label>
                   </div>
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        handleAnswer(q.id, { ...answers[q.id], image: reader.result });
-                      };
-                      reader.readAsDataURL(file);
-                    }} 
-                  />
-                </label>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}
